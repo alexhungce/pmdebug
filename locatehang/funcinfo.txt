@@ -1,0 +1,22 @@
+panic oops_enter __stack_chk_fail:
+A kernel panic has stopped the machine.
+
+__stack_chk_fail:
+Detected corruption of on-stack canary value.
+
+printk:
+This should not happen!
+
+acpi_enter_sleep_state:
+The kernel was transitioning to a suspend sleep state and never returned.
+Generally this means that the machine did not wake up and get back to the
+kernel resume successfully which normally indicates a BIOS issue.  However
+we probably should have seen the hang in the final writes to the PM control
+registers on the southbridge (e.g. in acpi_hw_write_pm1_control() so a little
+more debugging is required to prove this really is a BIOS issue or not.
+
+acpi_hw_write_pm1_control:
+The kernel probably wrote to the southbridge the magic to put the machine
+into suspend or hibernate and then the machine hung.  Generally this means
+that the machine did not wake up and get back to the kernel resume successfully
+which normally indicates a BIOS issue.
