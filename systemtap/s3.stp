@@ -16,7 +16,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
  */
-
 global tasks_frozen
 global tasks_thawed
 global tasks_frozen_names
@@ -30,13 +29,87 @@ global saved_device_driver_name
 global devices_suspended
 global devices_resumed
 
+global reboot_funcname
+global ledflash_funcname
+global beep_funcname
+
 %{
 #include <linux/device.h>
+#include <linux/delay.h>
 #include <linux/rtc.h>
+#include <linux/timex.h>
 #include <asm/rtc.h>
 #include <asm/io.h>
+%}
 
-void pcsp_generate_bfsk(const char *s, unsigned int count);
+function handle_args() {
+	reboot_funcname = @1
+	ledflash_funcname = @2
+	beep_funcname = @3
+}
+
+/*
+ *  Flash keyboard LEDs
+ */
+function led_flash() %{
+#define I8042_DATA_REG          0x60
+#define I8042_STATUS_REG        0x64
+
+	int i;
+	int val = 0;
+
+	for (i=0;i<10;i++) {
+		val ^= 7;
+
+		while (inb(I8042_STATUS_REG) & 0x2)
+			;
+
+		outb(0x00, 0x80);
+		outb(0xed, I8042_DATA_REG);
+		while (inb(I8042_STATUS_REG) & 0x2)
+			;
+		outb(0x00, 0x80);
+		outb(val, I8042_DATA_REG);
+
+		mdelay(200);
+	}
+%}
+
+/*
+ *  Beep at freq Hz.
+ */
+function beep(freq: long, delay: long) %{
+	unsigned int frequency = THIS->freq;
+	unsigned int enable;
+
+        if (!frequency) {
+                enable = 0x00;          /* Turn off speaker */
+        } else {
+                unsigned short div = PIT_TICK_RATE / frequency;
+                outb(0xb6, 0x43);       /* Ctr 2, squarewave, load, binary */
+                udelay(1);
+                outb(div, 0x42);        /* LSB of counter */
+                udelay(1);
+                outb(div >> 8, 0x42);   /* MSB of counter */
+                udelay(1);
+                enable = 0x03;          /* Turn on speaker */
+        }
+        inb(0x61);              /* Dummy read of System Control Port B */
+        udelay(1);
+        outb(enable, 0x61);     /* Enable timer 2 output to speaker */
+	mdelay(THIS->delay);
+%}
+
+
+/*
+ *  Dirty reboot via ICH
+ */
+function ich_reboot() %{
+	outb(0x2, 0xcf9);
+	outb(0x00, 0x80);
+	outb(0x4, 0xcf9);
+	outb(0x00, 0x80);
+	outb(0xe, 0xcf9);
 %}
 
 function device_name:string (dev: long) %{
@@ -78,12 +151,12 @@ function WriteDebug(msg: string) {
 }
 
 function WriteTaskDebug(msg: string) {
-	//printf("PM-TASK-DEBUG: %s", msg)
+	printf("PM-TASK-DEBUG: %s", msg)
 	console_write(msg)
 }
 
 function WriteDeviceDebug(msg: string) {
-	//printf("PM-DEV-DEBUG: %s", msg)
+	printf("PM-DEV-DEBUG: %s", msg)
 	console_write(msg)
 }
 
@@ -158,6 +231,9 @@ probe kernel.function("__thaw_process@kernel/freezer.c") {
 }
 
 probe begin {
+	handle_args()
+
+
 	rtc_save_restore(1)
 	s = sprintf("ready to run S3 test\n")
 	WriteInfo(s)
@@ -181,7 +257,7 @@ probe end {
 		returned_count++
 
 	s = sprintf("%d functions entered, %d functions returned.\n",
-		entered_count, returned_count);
+		entered_count, returned_count)
 	WriteInfo(s)
 	
 	s = sprintf("%d tasks frozen and %d tasks thawed.\n", frozen_count, thawed_count)
@@ -199,22 +275,45 @@ probe end {
 
 function trace_in(str: string)
 {
-	hash_func(probefunc())
-	funcs_entered[probefunc()] = 1
+	f = probefunc()
+	hash_func(f)
+
+	if (f == reboot_funcname)
+		ich_reboot()
+	if (f == ledflash_funcname)
+		led_flash()
+	if (f == beep_funcname) {
+		beep(880,200)
+		beep(440,200)
+		beep(0,0)
+	}
+
+	funcs_entered[f] = 1
 	if (str == "")
-		s = sprintf("called -> %s()\n", probefunc())
+		s = sprintf("called -> %s()\n", f)
 	else
-		s = sprintf("called -> %s() %s\n", probefunc(), str)
+		s = sprintf("called -> %s() %s\n", f, str)
 	WriteTrace(s)
 }
 
 function trace_out(ret: string)
 {
-	funcs_returned[probefunc()] = 1
+	f = probefunc()
+
+	if (f == reboot_funcname)
+		ich_reboot()
+	if (f == ledflash_funcname)
+		led_flash()
+	if (f == beep_funcname) {
+		beep(440,200)
+		beep(880,200)
+		beep(0,0)
+	}
+	funcs_returned[f] = 1
 	if (ret == "") 
-		s = sprintf("return <- %s()\n", probefunc())
+		s = sprintf("return <- %s()\n", f)
 	else
-		s = sprintf("return <- %s() [%s]\n", probefunc(), ret)
+		s = sprintf("return <- %s() [%s]\n", f, ret)
 	WriteTrace(s)
 }
 
@@ -243,18 +342,88 @@ probe kernel.function("suspend_prepare@kernel/power/suspend.c").return {
 	trace_out($$return)
 
 	if (errno_str($return) == "EPERM") {
-		s = sprintf("suspend_ops or suspend_ops->enter were not defined and caused suspend_prepare() to fail.\n")
+		s = sprintf("suspend_prepare(): suspend_ops() or suspend_ops->enter() were not defined and caused a suspend failure.\n")
 		WriteTest(s)
 	} else if ($return != 0) {
-		s = sprintf("pm_notifier_call_chain(), usermodehelper_disable() or suspend_freeze_processes() failed causing suspend_prepare() to fail.\n");
+		s = sprintf("pm_notifier_call_chain(), usermodehelper_disable() or suspend_freeze_processes() failed causing suspend_prepare() to fail.\n")
 		WriteTest(s)
 	}
 }
 */
 
+/* Trace pm_notifier_call_chain as it can cause suspend_prepare() to fail */
+probe kernel.function("pm_notifier_call_chain@kernel/power/main.c") {
+	trace_in("")
+}
 
-/* TODO: trace pm_notifier_call_chain, usermodehelper_disable, suspend_freeze_processes */
+probe kernel.function("pm_notifier_call_chain@kernel/power/main.c").return {
+	trace_out($$return)
 
+	if (errno_str($return) == "EINVAL") {
+		s = sprintf("pm_notifier_call_chain() failed on a bad notifier call chain.\n")
+		WriteTest(s)
+	}
+}
+
+/* Trace usermodhelper_disable as it can cause suspend_prepare() to fail */
+probe kernel.function("usermodehelper_disable@kernel/kmod.c") {
+	trace_in("")
+}
+
+probe kernel.function("usermodehelper_disable@kernel/kmod.c").return {
+	trace_out($$return)
+
+	if (errno_str($return) == "EAGAIN") {
+		s = sprintf("usermodehelper_disable() running helpers did not reduce to zero in 5 seconds.\n")
+		WriteTest(s)
+	}
+}
+
+
+probe kernel.function("state_store@kernel/power/main.c") {
+	trace_in("")
+
+	s = sprintf("/sys/power/state = \"%s\"\n", kernel_string($buf))
+	WriteDebug(s)
+
+	if (kernel_string($buf) != "mem") {
+		s = sprintf("state_store(): /sys/power/state did not get 'mem' string to initiate suspend, got %s instead.\n", kernel_string($buf))
+		WriteTest(s)
+	}
+}
+
+probe kernel.function("state_store@kernel/power/main.c").return {
+	trace_out($$return)
+	if ($return != 3) {
+		s = sprintf("state_store(): Expecting a return value of 3, got %d instead.\n", $return)
+		WriteTest(s)
+	}
+	exit()
+}
+
+probe kernel.function("disable_nonboot_cpus@kernel/cpu.c") {
+	trace_in("")
+}
+
+probe kernel.function("disable_nonboot_cpus@kernel/cpu.c").return {
+	trace_out($$return)
+	if ($return != 0) {
+		s = sprintf("disable_nonboot_cpus(): CPU(s) could not be disabled.\n")
+		WriteTest(s)
+	}
+}
+
+probe kernel.function("syscore_suspend@drivers/base/syscore.c") {
+	trace_in("")
+}
+
+probe kernel.function("syscore_suspend@drivers/base/syscore.c").return {
+	trace_out($$return)
+	if ($return != 0) {
+		s = sprintf("syscore_suspend(): could not suspend all the system core.\n")
+		WriteTest(s)
+	}
+}
 
 probe kernel.function("suspend_valid_only_mem@kernel/power/suspend.c").return {
 	trace_out($$return)
@@ -262,14 +431,8 @@ probe kernel.function("suspend_valid_only_mem@kernel/power/suspend.c").return {
 
 probe kernel.function("suspend_enter@kernel/power/suspend.c").return {
 	trace_out($$return)
-	/* TODO:
-		suspend_ops->prepare()
-		dpm_suspend_noirq()
-		disable_nonboot_cpus()
-		syscore_suspend()
-	*/
 	if ($return != 0) {
-		s = sprintf("suspend_enter() failed to enter the desired system sleep state.\n");
+		s = sprintf("suspend_enter(): failed to enter the desired system sleep state.\n")
 		WriteTest(s)
 	}
 }
@@ -277,12 +440,9 @@ probe kernel.function("suspend_enter@kernel/power/suspend.c").return {
 probe kernel.function("suspend_devices_and_enter@kernel/power/suspend.c").return {
 	trace_out($$return)
 	if ($return != 0) {
-		s = sprintf("suspend_devices_and_enter() failed to suspend devices and enter the desired system sleep state.\n");
+		s = sprintf("suspend_devices_and_enter(): failed to suspend devices and enter the desired system sleep state.\n")
 		WriteTest(s)
 	}
-	/* TODO:
-		dpm_suspend_start()
-	*/
 }
 
 /* inlined so cannot trace
@@ -294,13 +454,13 @@ probe kernel.function("suspend_finish@kernel/power/suspend.c").return {
 probe kernel.function("enter_state@kernel/power/suspend.c").return {
 	trace_out($$return)
 	if (errno_str($return) == "ENODEV") {
-		s = sprintf("enter_state() failed because valid_state() returned -ENODEV. There probably isn't support for entering the specific S state.\n");
+		s = sprintf("enter_state(): failed because valid_state() returned -ENODEV. There probably isn't support for entering the specific S state.\n")
 		WriteTest(s)
 	} else if (errno_str($return) == "EBUSY") {
-		s = sprintf("enter_state() failed because it could not get hold of the pm_mutex.\n");
+		s = sprintf("enter_state(): failed because it could not get hold of the pm_mutex.\n")
 		WriteTest(s)
 	} else if ($return != 0) {
-		s = sprintf("enter_state() failed because either suspend_prepare() or suspend_devices_and_enter() failed.\n")
+		s = sprintf("enter_state(): failed because either suspend_prepare() or suspend_devices_and_enter() failed.\n")
 		WriteTest(s)
 	}
 }
@@ -308,10 +468,10 @@ probe kernel.function("enter_state@kernel/power/suspend.c").return {
 probe kernel.function("pm_suspend@kernel/power/suspend.c").return {
 	trace_out($$return)
 	if (errno_str($return) == "EINVAL") {
-		s = sprintf("pm_suspend() failed because the state argument was wrong, was %d should be > PM_SUSPEND_ON and < PM_SUSPEND_MAX.\n", $state)
+		s = sprintf("pm_suspend(): failed because the state argument was wrong, was %d should be > PM_SUSPEND_ON and < PM_SUSPEND_MAX.\n", $state)
 		WriteTest(s)
 	} else if ($return != 0) {
-		s = sprintf("pm_suspend() failed because enter_state() failed.\n");
+		s = sprintf("pm_suspend(): failed because enter_state() failed.\n")
 		WriteTest(s)
 	}
 }
@@ -379,10 +539,10 @@ probe kernel.function("try_to_freeze_tasks@kernel/power/process.c").return {
 	trace_out($$return)
 	if (errno_str($return) == "EBUSY") {
 		if ($sig_only == 0) {
-			s = sprintf("try_to_freeze_tasks could not freeze all the userspace tasks and was left with some unfreezable tasks.\n")
+			s = sprintf("try_to_freeze_tasks(): could not freeze all the userspace tasks and was left with some unfreezable tasks.\n")
 			WriteTest(s)
 		} else {
-			s = sprintf("try_to_freeze_tasks could not freeze all the remaining non-userspace tasks and was left with some unfreezable tasks.\n")
+			s = sprintf("try_to_freeze_tasks(): could not freeze all the remaining non-userspace tasks and was left with some unfreezable tasks.\n")
 			WriteTest(s)
 		}
 	}
@@ -399,13 +559,13 @@ probe kernel.function("freeze_processes@kernel/power/process.c").return {
 		frozen_count++
 
 	if (errno_str($return) == "EBUSY") {
-		s = sprintf("freeze_processes could not freeze all the tasks.\n")
+		s = sprintf("freeze_processes(): could not freeze all the tasks.\n")
 		WriteTest(s)
 	} else if ($return != 0) {
-		s = sprintf("freeze_processes failed for some unknown reason.\n")
+		s = sprintf("freeze_processes(): failed for some unknown reason.\n")
 		WriteTest(s)
 	} else {
-		s = sprintf("%d tasks frozen successfully.\n", frozen_count);
+		s = sprintf("%d tasks frozen successfully.\n", frozen_count)
 		WriteTest(s)
 	}
 }
@@ -469,7 +629,7 @@ probe kernel.function("acpi_sleep_tts_switch@drivers/acpi/sleep.c"),
 probe kernel.function("acpi_sleep_prepare@drivers/acpi/sleep.c").return {
 	trace_out($$return)
 	if ($return != 0) {
-		s = sprintf("acpi_sleep_prepare failed, this can only occur because the\nacpi_wakeup_address was not set. Without this, resume cannot work because it needs some\ncontext to resume from.\n")
+		s = sprintf("acpi_sleep_prepare(): failed - this can only occur because the\nacpi_wakeup_address was not set. Without this, resume cannot work because it needs some\ncontext to resume from.\n")
 		WriteTest(s)
 	}
 }
@@ -477,7 +637,7 @@ probe kernel.function("acpi_sleep_prepare@drivers/acpi/sleep.c").return {
 probe kernel.function("acpi_pm_prepare@drivers/acpi/sleep.c").return {
 	trace_out($$return)
 	if ($return != 0) {
-		s = sprintf("acpi_pm_pre_suspend failed, this happens when suspend_nvs_save() fails.\nThe system could not save to the ACPI NVSregion, normally because of a iomapping\nfailure (out of memory).\n")
+		s = sprintf("acpi_pm_pre_suspend(: failed probably because suspend_nvs_save() fails.\nThe system could not save to the ACPI NVSregion, normally because of a iomapping\nfailure (out of memory).\n")
 		WriteTest(s)
 	}
 }
@@ -485,13 +645,13 @@ probe kernel.function("acpi_pm_prepare@drivers/acpi/sleep.c").return {
 probe kernel.function("acpi_suspend_begin@drivers/acpi/sleep.c").return {
 	trace_out($$return)
 	if (errno_str($return) == "ENOSYS") {
-		s = sprintf("acpi_suspend_begin failed because ACPI does not support state %d.\n", $pm_state)
+		s = sprintf("acpi_suspend_begin() failed - ACPI does not support state %d.\n", $pm_state)
 		WriteTest(s)
 	} else if (errno_str($return) == "ENOMEM") {
-		s = sprintf("acpi_suspend_begin failed because suspend_nvs_alloc() could not\nallocate a NVS region.\n");
+		s = sprintf("acpi_suspend_begin() failed - because suspend_nvs_alloc() could not\nallocate a NVS region.\n")
 		WriteTest(s)
 	} else if ($return != 0) {
-		s = sprintf("acpi_suspend_begin failed for some unknown reason.\n")
+		s = sprintf("acpi_suspend_begin() failed for some unknown reason.\n")
 		WriteTest(s)
 	}
 }
@@ -499,13 +659,13 @@ probe kernel.function("acpi_suspend_begin@drivers/acpi/sleep.c").return {
 probe kernel.function("acpi_suspend_enter@drivers/acpi/sleep.c").return {
 	trace_out($$return)
 	if (errno_str($return) == "EINVAL") {
-		s = sprintf("acpi_suspend_enter failed because acpi_suspend_lowlevel() detected a\nwakeup header that did not match the correct wakeup header signature.\n")
+		s = sprintf("acpi_suspend_enter(): failed because acpi_suspend_lowlevel() detected a\nwakeup header that did not match the correct wakeup header signature.\n")
 		WriteTest(s)
 	} else if (errno_str($return) == "EFAULT") {
-		s = sprintf("acpi_suspend_enter failed because acpi_enter_sleep_state() count not\nenter into the chosen sleep state. This is could be a H/W issue on the southbridge.\n")
+		s = sprintf("acpi_suspend_enter(): failed because acpi_enter_sleep_state() count not\nenter into the chosen sleep state. This is could be a H/W issue on the southbridge.\n")
 		WriteTest(s)
 	} else if ($return != 0) {
-		s = sprintf("acpi_suspend_enter failed for some unknown reason.\n")
+		s = sprintf("acpi_suspend_enter(): failed for some unknown reason.\n")
 		WriteTest(s)
 	}
 }
@@ -515,7 +675,7 @@ skip
 probe kernel.function("acpi_suspend_state_valid@drivers/acpi/sleep.c").return {
 	trace_out($$return)
 	if ($return == 0) {
-		s = sprintf("acpi_suspend_enter was given a bad PM state: %d\n", $pm_state)
+		s = sprintf("acpi_suspend_enter(): function was passed a bad PM state: %d\n", $pm_state)
 		WriteTest(s)
 	}
 }
@@ -524,7 +684,7 @@ probe kernel.function("acpi_suspend_state_valid@drivers/acpi/sleep.c").return {
 probe kernel.function("acpi_suspend_begin_old@drivers/acpi/sleep.c").return {
 	trace_out($$return)
 	if ($return !=0) {
-		s = sprintf("acpi_suspend_begin_old failed because acpi_suspend_begin() or __acpi_pm_prepare() failed.");
+		s = sprintf("acpi_suspend_begin_old(): failed because acpi_suspend_begin() or __acpi_pm_prepare() failed.")
 		WriteTest(s)
 	}
 }
@@ -532,10 +692,10 @@ probe kernel.function("acpi_suspend_begin_old@drivers/acpi/sleep.c").return {
 probe kernel.function("acpi_suspend@drivers/acpi/sleep.c").return {
 	trace_out($$return)
 	if (errno_str($return) == "EINVAL") {
-		s = sprintf("acpi_suspend failed because it was given an invalid ACPI state: %d.\n", $acpi_state)
+		s = sprintf("acpi_suspend(): failed because it was given an invalid ACPI state: %d.\n", $acpi_state)
 		WriteTest(s)
 	} else if ($return !=0) {
-		s = sprintf("acpi_suspend failed because pm_suspend() failed.");
+		s = sprintf("acpi_suspend(): failed because pm_suspend() failed.")
 		WriteTest(s)
 	}
 }
@@ -633,22 +793,26 @@ probe kernel.function("dpm_resume_noirq@drivers/base/power/main.c").return,
 
 probe kernel.function("device_prepare@drivers/base/power/main.c"),
       kernel.function("legacy_suspend@drivers/base/power/main.c") {
-	s = sprintf("device: %s (%s)", device_name($dev), device_driver_name($dev))
 	trace_in(s)
+	s = sprintf("device: %s (%s)", device_name($dev), device_driver_name($dev))
+	WriteDeviceDebug(s)
+}
+
+probe kernel.function("async_suspend@drivers/base/power/main.c") {
+	trace_in(s)
+	s = sprintf("device: %s (%s)", device_name($data), device_driver_name($data))
+	WriteDeviceDebug(s)
 }
 
 probe kernel.function("async_suspend@drivers/base/power/main.c").return {
-	/* TODO: 
-
-		struct device *dev = (struct device *)data;
-		print dev info */
-	trace_in("")
+	trace_out("")
+	
 }
 
 probe kernel.function("pm_noirq_op@drivers/base/power/main.c").return {
 	trace_out($$return)
 	if ($return != 0) {
-		s = sprintf("pm_noirq_op() failed to change a power state on device %s (%s).\n", device_name($dev), device_driver_name($dev))
+		s = sprintf("pm_noirq_op(): failed to change a power state on device %s (%s).\n", device_name($dev), device_driver_name($dev))
 		WriteTest(s)
 	}
 }
@@ -656,7 +820,7 @@ probe kernel.function("pm_noirq_op@drivers/base/power/main.c").return {
 probe kernel.function("device_resume_noirq@drivers/base/power/main.c").return {
 	trace_out($$return)
 	if ($return != 0) {
-		s = sprintf("device_resume_noirq() failed to change a power state on device %s (%s).\n", device_name($dev), device_driver_name($dev))
+		s = sprintf("device_resume_noirq(): failed to change a power state on device %s (%s).\n", device_name($dev), device_driver_name($dev))
 		WriteTest(s)
 	}
 }
@@ -664,7 +828,7 @@ probe kernel.function("device_resume_noirq@drivers/base/power/main.c").return {
 probe kernel.function("device_suspend_noirq@drivers/base/power/main.c").return {
 	trace_out($$return)
 	if ($return != 0) {
-		s = sprintf("device_suspend_noirq() failed to change a power state on device %s (%s).\n", device_name($dev), device_driver_name($dev))
+		s = sprintf("device_suspend_noirq(): failed to change a power state on device %s (%s).\n", device_name($dev), device_driver_name($dev))
 		WriteTest(s)
 	}
 }
@@ -672,7 +836,7 @@ probe kernel.function("device_suspend_noirq@drivers/base/power/main.c").return {
 probe kernel.function("dpm_suspend_noirq@drivers/base/power/main.c").return {
 	trace_out($$return)
 	if ($return != 0) {
-		s = sprintf("dpm_suspend_noirq() failed change a power state on a device.\n");
+		s = sprintf("dpm_suspend_noirq(): failed change a power state on a device.\n")
 		WriteTest(s)
 	}
 }
@@ -680,7 +844,7 @@ probe kernel.function("dpm_suspend_noirq@drivers/base/power/main.c").return {
 probe kernel.function("legacy_suspend@drivers/base/power/main.c").return {
 	trace_out($$return)
 	if ($return != 0) {
-		s = sprintf("legacy_suspend() failed to change a power state on device %s (%s).\n", device_name($dev), device_driver_name($dev))
+		s = sprintf("legacy_suspend(): failed to change a power state on device %s (%s).\n", device_name($dev), device_driver_name($dev))
 		WriteTest(s)
 	}
 }
@@ -689,7 +853,7 @@ probe kernel.function("dpm_suspend@drivers/base/power/main.c").return {
 	trace_out($$return)
 
 	if ($return != 0) {
-		s = sprintf("dpm_suspend() failed to suspend all devices.\n");
+		s = sprintf("dpm_suspend(): failed to suspend all devices.\n")
 		WriteTest(s)
 	}
 
@@ -703,9 +867,9 @@ probe kernel.function("dpm_suspend@drivers/base/power/main.c").return {
 			dev_fail++
 
 	if (dev_fail == 0)
-		s = sprintf("%d devices suspended correctly.\n", dev_ok);
+		s = sprintf("%d devices suspended correctly.\n", dev_ok)
 	else
-		s = sprintf("%d of %d devices failed to suspend.\n", dev_fail, dev_ok);
+		s = sprintf("%d of %d devices failed to suspend.\n", dev_fail, dev_ok)
 	WriteTest(s)
 
 	if (dev_fail > 0) {
@@ -722,7 +886,7 @@ probe kernel.function("dpm_suspend@drivers/base/power/main.c").return {
 probe kernel.function("device_prepare@drivers/base/power/main.c").return {
 	trace_out($$return)
 	if ($return != 0) {
-		s = sprintf("device_prepare() failed to prepare a device for a system power transition: device %s (%s).\n", device_name($dev), device_driver_name($dev))
+		s = sprintf("device_prepare(): failed to prepare a device for a system power transition: device %s (%s).\n", device_name($dev), device_driver_name($dev))
 		WriteTest(s)
 	}
 }
@@ -730,7 +894,7 @@ probe kernel.function("device_prepare@drivers/base/power/main.c").return {
 probe kernel.function("legacy_resume@drivers/base/power/main.c").return {
 	trace_out($$return)
 	if ($return != 0) {
-		s = sprintf("legacy_resume() failed to resume device %s (%s).\n", device_name($dev), device_driver_name($dev))
+		s = sprintf("legacy_resume(): failed to resume device %s (%s).\n", device_name($dev), device_driver_name($dev))
 		WriteTest(s)
 	}
 }
@@ -749,7 +913,7 @@ probe kernel.function("device_resume@drivers/base/power/main.c").return {
 		devices_resumed[device_name($dev)] = 1;
 	} else {
 		devices_resumed[device_name($dev)] = 0;
-		s = sprintf("failed to resumed device %s (%s): %s\n",
+		s = sprintf("device_resume(): failed to resumed device %s (%s): %s\n",
 			device_name($dev), device_driver_name($dev), $$return)
 		WriteTest(s)
 	}
@@ -786,7 +950,7 @@ probe kernel.function("dpm_resume@drivers/base/power/main.c").return {
 
 	foreach (dev in devices_resumed) {
 		if (!(dev in devices_suspended)) {
-			s = sprintf("Device %s was suspended but not resumed for some reason.\n", dev)
+			s = sprintf("dpm_resume(): device %s was suspended but not resumed for some reason.\n", dev)
 			WriteTest(s)
 		}
 	}
@@ -794,34 +958,16 @@ probe kernel.function("dpm_resume@drivers/base/power/main.c").return {
 
 probe kernel.function("dpm_suspend_start@drivers/base/power/main.c").return {
 	trace_out($$return)
-	/* TODO more debug on failure? */
-}
-
-probe kernel.function("state_store@kernel/power/main.c") {
-	trace_in("")
-
-	s = sprintf("/sys/power/state = \"%s\"\n", kernel_string($buf))
-	WriteDebug(s)
-
-	if (kernel_string($buf) != "mem") {
-		s = sprintf("/sys/power/state did not get 'mem' string to initiate suspend, got %s instead.\n", kernel_string($buf))
+	if ($return != 0) {
+		s = sprintf("dpm_suspend_start(): dpm_prepare() or dom_suspend() failed, cannot prepare devices for PM transistion and suspend.\n")
 		WriteTest(s)
 	}
-}
-
-probe kernel.function("state_store@kernel/power/main.c").return {
-	trace_out($$return)
-	if ($return != 3) {
-		s = sprintf("Expecting a return value of 3, got %d instead.\n", $return);
-		WriteTest(s)
-	}
-	exit()
 }
 
 probe kernel.function("dpm_prepare@drivers/base/power/main.c").return {
 	trace_out($$return)
 	if ($return != 0) {
-		s = sprintf("Failed to prepare a device for a power transision. See kernel log for more info on the device.\n");
+		s = sprintf("dpm_prepare(): failed to prepare a device for a power transision. See kernel log for more info on the device.\n")
 		WriteTest(s)
 	}
 }
@@ -839,7 +985,7 @@ probe kernel.function("__device_suspend@drivers/base/power/main.c").return {
 		devices_suspended[device_name($dev)] = 1;
 	} else {
 		devices_suspended[device_name($dev)] = 0;
-		s = sprintf("device %s (%s) failed to suspend.\n", 
+		s = sprintf("__device_suspend(): device %s (%s) failed to suspend.\n", 
 			saved_device_name, saved_device_driver_name)
 		WriteTest(s)
 	}
@@ -855,7 +1001,7 @@ probe kernel.function("acpi_suspend_lowlevel@arch/x86/kernel/acpi/sleep.c").retu
 	trace_out($$return)
 	s = sprintf("returning from suspend.\n")
 	WriteInfo(s)
-	s = sprintf("resume from BIOS -> kernel functioning correctly.\n");
+	s = sprintf("resume from BIOS -> kernel functioning correctly.\n")
 	WriteTest(s)
 }
 
