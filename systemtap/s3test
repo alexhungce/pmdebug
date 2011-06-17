@@ -143,4 +143,4 @@ print "  Test results in s3-test.log"
 print ""
 
 print "Run 's3diagnose' to get intelligent diagnosis from the logs."
-print "(which needs to be implemented! :-)
+print "(which needs to be implemented! :-)"
