@@ -1,0 +1,46 @@
+S3 debug scripts
+
+How to Use:
+
+1. Install kernel debug .ddeb 
+	This may take a while!
+
+2. Run the s3test script
+
+	./s3test 
+
+optional args:
+
+	-f, --flash funcname
+		flash the keyboard LEDs when we execute one of
+		the s3 instrumented functions
+
+	-b, --beep
+		beep the speaker when we execute one of the
+		s3 instrumented functions
+	
+	-r, --reboot
+		reboot the machine when we execute one of the
+		s3 instrumented functions
+
+	-s	automatically suspend the machine
+
+3. Gather the data
+
+	Full trace log in s3-systemtap.log
+	Function traces in s3-trace.log
+		note that some inline'd functions and
+		return paths cannot be traced.
+	Device suspend/resume state in s3-devices.log
+	Task suspend/resume state in s3-tasks.log
+	Test results in s3-test.log
+
+If the machine hangs, reboot the machine and run
+the 'locatehang' program. This will convert the RTC hash back
+into a function hash and then lookup and determine the last
+instrumented function executed before the machine locked up.
+
+4. Next step...
+
+	I'm going to write a s3diagnose tool that will look
+at the logs and try and give some kind of intelligent diagnoses.

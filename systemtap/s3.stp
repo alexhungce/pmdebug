@@ -32,21 +32,39 @@ global devices_resumed
 global reboot_funcname
 global ledflash_funcname
 global beep_funcname
+global parent_pid
+
+/*
+ *  TODO:  check time we spent in suspend, to see if we don't get S3 bouncing
+ */
 
 %{
 #include <linux/device.h>
 #include <linux/delay.h>
 #include <linux/rtc.h>
 #include <linux/timex.h>
+#include <asm/siginfo.h>
 #include <asm/rtc.h>
 #include <asm/io.h>
 %}
 
 function handle_args() {
-	reboot_funcname = @1
-	ledflash_funcname = @2
-	beep_funcname = @3
+	parent_pid = strtol(@1, 10)
+	reboot_funcname = @2
+	ledflash_funcname = @3
+	beep_funcname = @4
 }
+
+function signal_proc:long(this_pid: long)
+%{
+	pid_t this_pid = (pid_t)THIS->this_pid;	
+	struct pid *pid = find_vpid(this_pid);
+	if (pid) {
+		kill_pid(pid, SIGUSR1, 1);
+		THIS->__retvalue = 0;
+	} else 
+		THIS->__retvalue = -1;
+%}
 
 /*
  *  Flash keyboard LEDs
@@ -233,10 +251,12 @@ probe kernel.function("__thaw_process@kernel/freezer.c") {
 probe begin {
 	handle_args()
 
-
 	rtc_save_restore(1)
-	s = sprintf("ready to run S3 test\n")
+	s = sprintf("Ready to run S3 test\n")
 	WriteInfo(s)
+
+	if (parent_pid != 0)
+		signal_proc(parent_pid)
 }
 
 probe end {
@@ -583,8 +603,8 @@ probe kernel.function("*@kernel/power/user.c").return {
 /* ---------------------------------------------------- */
 
 probe kernel.function("freeze_task@kernel/freezer.c") {
-	//s = sprintf("freezing task \"%s\"\n", kernel_string($p->comm))
-	//WriteInfo(s)
+	s = sprintf("freezing task \"%s\"\n", kernel_string($p->comm))
+	WriteTaskDebug(s)
 	tasks_frozen[$p->pid] = 1
 	tasks_frozen_names[$p->pid] = kernel_string($p->comm)
 }
@@ -794,13 +814,13 @@ probe kernel.function("dpm_resume_noirq@drivers/base/power/main.c").return,
 probe kernel.function("device_prepare@drivers/base/power/main.c"),
       kernel.function("legacy_suspend@drivers/base/power/main.c") {
 	trace_in(s)
-	s = sprintf("device: %s (%s)", device_name($dev), device_driver_name($dev))
+	s = sprintf("device: %s (%s)\n", device_name($dev), device_driver_name($dev))
 	WriteDeviceDebug(s)
 }
 
 probe kernel.function("async_suspend@drivers/base/power/main.c") {
 	trace_in(s)
-	s = sprintf("device: %s (%s)", device_name($data), device_driver_name($data))
+	s = sprintf("device: %s (%s)\n", device_name($data), device_driver_name($data))
 	WriteDeviceDebug(s)
 }
 
@@ -993,21 +1013,21 @@ probe kernel.function("__device_suspend@drivers/base/power/main.c").return {
 
 probe kernel.function("acpi_suspend_lowlevel@arch/x86/kernel/acpi/sleep.c") {
 	trace_in("")
-	s = sprintf("jumping to do_suspend_lowlevel to save processor state.\n")
+	s = sprintf("Jumping to do_suspend_lowlevel to save processor state.\n")
 	WriteInfo(s)
 }
 
 probe kernel.function("acpi_suspend_lowlevel@arch/x86/kernel/acpi/sleep.c").return {
 	trace_out($$return)
-	s = sprintf("returning from suspend.\n")
+	s = sprintf("Returning from suspend.\n")
 	WriteInfo(s)
-	s = sprintf("resume from BIOS -> kernel functioning correctly.\n")
+	s = sprintf("Resumed. Assuming BIOS -> kernel transsition works correctly.\n")
 	WriteTest(s)
 }
 
 probe kernel.function("acpi_enter_sleep_state@drivers/acpi/acpica/hwsleep.c") {
 	trace_in("")
-	s = sprintf("going into sleep state %d.\n", $sleep_state)
+	s = sprintf("Going into sleep state %d.\n", $sleep_state)
 	WriteInfo(s)
 }
 
