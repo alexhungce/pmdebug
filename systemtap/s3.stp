@@ -43,9 +43,12 @@ global parent_pid
 #include <linux/delay.h>
 #include <linux/rtc.h>
 #include <linux/timex.h>
+#include <linux/pm.h>
 #include <asm/siginfo.h>
 #include <asm/rtc.h>
 #include <asm/io.h>
+
+#define RTC_HASH_MAX 16127999
 %}
 
 function handle_args() {
@@ -188,9 +191,9 @@ function rtc_save_restore(save: long) %{
         	set_rtc_time(&time);
 %}
 
-function hash_func(funcname: string) %{
+function hash_symbol(symbol: string) %{
 	const char *s;
-	const char *str = (char*)THIS->funcname;
+	const char *str = (char*)THIS->symbol;
 	unsigned long g,h = 0;
 
         static struct rtc_time time = {
@@ -214,11 +217,7 @@ function hash_func(funcname: string) %{
 		}
 	}
 	
-	h %= 16127999;
-
-	/* 0..16127999 (0..f617ff) */
-
-	/* printk("HASH '%s' %lx --> ", str, h); */
+	h %= RTC_HASH_MAX;
 
         time.tm_year = (h % 100);
         h /= 100;
@@ -231,16 +230,85 @@ function hash_func(funcname: string) %{
         time.tm_min = (h % 20) * 3;
         h /= 20;
 
-	/*
-	printk("%d/%d/%d, %d:%d:??\n",
-		time.tm_mday, time.tm_mon, time.tm_year,
-		time.tm_hour, time.tm_min);
-	*/
+        set_rtc_time(&time);
+%}
+
+function hash_dev_func(dev: long, suspend: long) %{
+	struct device *dev = (struct device *)THIS->dev;
+	unsigned long suspend = THIS->suspend;
+	unsigned long addr = 0;
+
+        static struct rtc_time time = {
+                .tm_sec = 0,
+                .tm_min = 0,
+                .tm_hour = 0,
+                .tm_mday = 7,
+                .tm_mon = 5,
+                .tm_year = 106,
+                .tm_wday = 3,
+                .tm_yday = 160,
+                .tm_isdst = 1
+        };
+
+	if (suspend) {
+		if (dev->class) {
+			if (dev->class->pm) 
+				addr = (unsigned long)dev->class->pm->suspend;
+			else
+				addr = (unsigned long)dev->class->suspend;
+		}
+
+		if (dev->type)
+			if (dev->type->pm)
+				addr = (unsigned long)dev->type->pm->suspend;
+
+		if (dev->bus) {
+			if (dev->bus->pm)
+				addr = (unsigned long)dev->bus->pm->suspend;
+			else
+				addr = (unsigned long)dev->bus->suspend;
+		}
+	} else {
+		if (dev->class) {
+			if (dev->class->pm) 
+				addr = (unsigned long)dev->class->pm->resume;
+			else
+				addr = (unsigned long)dev->class->resume;
+		}
+
+		if (dev->type)
+			if (dev->type->pm)
+				addr = (unsigned long)dev->type->pm->resume;
+
+		if (dev->bus) {
+			if (dev->bus->pm)
+				addr = (unsigned long)dev->bus->pm->resume;
+			else
+				addr = (unsigned long)dev->bus->resume;
+		}
+	}
+
+	addr %= RTC_HASH_MAX;
+	
+        time.tm_year = (addr % 100);
+        addr /= 100;
+        time.tm_mon = (addr % 12);
+        addr /= 12;
+        time.tm_mday = (addr % 28) + 1;
+        addr /= 28;
+        time.tm_hour = (addr % 24);
+        addr /= 24;
+        time.tm_min = (addr % 20) * 3;
+        addr /= 20;
 
         set_rtc_time(&time);
 %}
 
-
+probe kernel.function("__device_suspend@drivers/base/power/main.c") {
+	/* We are going to call pm_op() on the device which calls the relevant suspend
+	   callback so hash this function to catch it if it locks up */
+	hash_dev_func($dev, 1)
+}
 
 probe kernel.function("__thaw_process@kernel/freezer.c") {
 	s = sprintf("thawing task \"%s\"\n", kernel_string($p->comm))
@@ -296,7 +364,7 @@ probe end {
 function trace_in(str: string)
 {
 	f = probefunc()
-	hash_func(f)
+	hash_symbol(f)
 
 	if (f == reboot_funcname)
 		ich_reboot()
@@ -923,8 +991,10 @@ probe kernel.function("device_resume@drivers/base/power/main.c") {
 	s = sprintf("resuming device %s (%s)\n",
 		device_name($dev), device_driver_name($dev))
 	WriteDeviceDebug(s)
+	hash_dev_func($dev, 0)
 	saved_device_name = device_name($dev)
 	saved_device_driver_name = device_driver_name($dev)
+	
 }
 
 probe kernel.function("device_resume@drivers/base/power/main.c").return {

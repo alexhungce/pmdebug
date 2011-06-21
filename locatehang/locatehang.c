@@ -29,7 +29,10 @@
 #define RTC_TIME	"/sys/class/rtc/rtc0/time"
 #define RTC_DATE	"/sys/class/rtc/rtc0/date"
 
-#define SYSTEM_MAP	"/boot/System.map-"
+#define RTC_HASH_MAX 	16127999
+
+
+#define KSYMS	"/proc/kallsyms"
 
 /* from drivers/base/power/trace.c */
 #define USERHASH 	(16)
@@ -48,6 +51,7 @@
 
 static char *funcinfo = FUNCINFO;
 static FILE *funcfp;
+static char *syms = KSYMS;
 
 /*
  * lookup_open()
@@ -167,17 +171,17 @@ static void lookup_func(const char *funcname)
 }
 
 /*
- *  func_to_hash()
- 	generate a hash from a function name.
+ *  symbol_to_hash()
+ 	generate a hash from a symbol name.
  */
-static unsigned long func_to_hash(const char *funcname)
+static unsigned long symbol_to_hash(const char *symbol)
 {
 	const char *s;
 	unsigned long h = 0;
 	unsigned long g;
 
 	/* From hash_pwj, Aho, Sethi and Ullman */
-        for (s = funcname; *s; s++) {
+        for (s = symbol; *s; s++) {
                 h = (h<<4) + *s;
                 g = h & 0xf0000000;
                 if (g) {
@@ -186,7 +190,7 @@ static unsigned long func_to_hash(const char *funcname)
                 }
         }
 
-        h %= 16127999;	/* Limit to size of available RTC bits */
+        h %= RTC_HASH_MAX;	/* Limit to size of available RTC bits */
 
 	return h;
 }
@@ -329,42 +333,40 @@ char *get_kernel_release(void)
 void find_func(unsigned long hash)
 {
 	FILE *fp;
-	char *uname;
-	char *sysmap;
-	size_t len;
 	int  match = 0;
+	int ret = 0;
 
-	if ((uname = get_kernel_release()) == NULL)
-		return;
-
-	len = strlen(SYSTEM_MAP) + strlen(uname) + 1;
-
-	if ((sysmap = (char*)malloc(len)) == NULL) {
-		fprintf(stderr, "Out of memory.\n");
-		return;
-	}
-	strcpy(sysmap, SYSTEM_MAP);
-	strcat(sysmap, uname);
-
-	if ((fp = fopen(sysmap, "r")) == NULL) {
-		fprintf(stderr, "Cannot open %s. Need root privileges.\n", sysmap);
+	if ((fp = fopen(syms, "r")) == NULL) {
+		fprintf(stderr, "Cannot open %s.\n", syms);
 		return;
 	}
 
-	while (!feof(fp)) {
+	for (;;) {
 		unsigned long addr;
 		char type;
-		char funcname[1024];
+		char symbol[1024];
+		char buffer[4096];
 		unsigned long funchash;
+		unsigned long addrhash;
 
-		if (fscanf(fp, "%lx %c %s\n", &addr, &type, funcname) == 3) {
-			funchash = func_to_hash(funcname);
+		if (fgets(buffer, sizeof(buffer), fp) == NULL)
+			break;
+		ret = fscanf(fp, "%lx %c %s", &addr, &type, symbol);
+		if (ret == 3) {
+			/* hashed either on symbol name or symbold address, so look both up */
+			funchash = symbol_to_hash(symbol);
 			if (funchash == hash) {
-				printf("  Hash matches: %s() (address: %lx)\n", funcname, addr);
-				lookup_func(funcname);
+				printf("  Hash matches: %s() (address: %lx)\n", symbol, addr);
+				lookup_func(symbol);
 				match++;
 			}
-		}
+			addrhash = addr % RTC_HASH_MAX;
+			if (addrhash == hash) {
+				printf("  Hash matches: %s() (address: %lx)\n", symbol, addr);
+				lookup_func(symbol);
+				match++;
+			}
+		}	
 	}
 
 	fclose(fp);
@@ -399,6 +401,7 @@ int main(int argc, char **argv)
 		{ "rtc", 0, 0, 0 },
 		{ "klog", 0, 0, 0 },
 		{ "funcinfo", 1, 0, 0 },
+		{ "syms", 1, 0, 0 },
 		{ 0, 0, 0, 0 }
 	};
 
@@ -406,7 +409,7 @@ int main(int argc, char **argv)
 		int opt_index;
 		int c;
 
-		c = getopt_long(argc, argv, "rk", long_opts, &opt_index);
+		c = getopt_long(argc, argv, "rkf:s:", long_opts, &opt_index);
 		if (c == -1)
 			break;
 		switch (c) {
@@ -421,6 +424,9 @@ int main(int argc, char **argv)
 			case 2:
 				funcinfo = optarg;	
 				break;
+			case 3:
+				syms = optarg;
+				break;
 			default:
 				syntax(argv[0]);
 				break;
@@ -434,6 +440,9 @@ int main(int argc, char **argv)
 			break;
 		case 'f':
 			funcinfo = optarg;
+			break;
+		case 's':
+			syms = optarg;
 			break;
 		default:
 			syntax(argv[0]);
