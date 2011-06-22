@@ -1,0 +1,61 @@
+AML run time tracer
+
+Tested against ubuntu-oneiric 
+
+=== How to Use ===
+
+1. Install kernel debug .ddeb
+        This may take a while!
+
+1.1) Create an /etc/apt/sources.list.d/ddebs.list by running the following line at a terminal:
+
+echo "deb http://ddebs.ubuntu.com $(lsb_release -cs) main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list.d/ddebs.list
+
+1.2) Import the debug symbol archive signing key:
+
+sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 428D7C01
+
+1.3) Then run:
+
+sudo apt-get update
+
+1.4) Download and install the debug kernel, e.g.
+
+sudo apt-get install linux-image-2.6.38-8-generic-dbgsym
+
+Ensure you kernel version matches. Probably a reboot is a good idea. [ not tested this ]
+
+2. Run:
+
+sudo stap -g ./amltrace.stp
+
+and you will see a dump of methods being executed and op code dump, e.g.
+
+Starting ACPI debugger.
+Evaluate _Q66():
+  Op: 0x002d INT_NAMEPATH_OP      [0x02 ARGUMENT]
+  Op: 0x000a BYTE_OP              [0x02 ARGUMENT]
+  Op: 0x0093 LEQUAL_OP            [0x00 EXECUTE]
+  Op: 0x0092 LNOT_OP              [0x00 EXECUTE]
+  Op: 0x00a0 IF_OP                [0x04 CONTROL]
+  Op: 0x0035 INT_METHODCALL_OP    [0x09 METHOD_CALL]
+Call NEVT():
+  Op: 0x0035 INT_METHODCALL_OP    [0x09 METHOD_CALL]
+Call ECG1():
+  Op: 0x000a BYTE_OP              [0x02 ARGUMENT]
+  Op: 0x0035 INT_METHODCALL_OP    [0x09 METHOD_CALL]
+Call ECRW():
+  Op: 0x0068 ARG0                 [0x02 ARGUMENT]
+  Op: 0x0035 INT_METHODCALL_OP    [0x09 METHOD_CALL]
+Call ECR2():
+  Op: 0x0068 ARG0                 [0x02 ARGUMENT]
+  Op: 0x0035 INT_METHODCALL_OP    [0x09 METHOD_CALL]
+Call ECR1():
+  Op: 0x002d INT_NAMEPATH_OP      [0x02 ARGUMENT]
+  Op: 0x000a BYTE_OP              [0x02 ARGUMENT]
+  Op: 0x0093 LEQUAL_OP            [0x00 EXECUTE]
+  Op: 0x00a0 IF_OP                [0x04 CONTROL]
+
+It's primitive, but it sure saves rebuilding the kernel with CONFIG_ACPI_DEBUG and selecting
+the appropriate debug runes.
+
