@@ -58,6 +58,9 @@ def sighandler(signum, frame):
 			print "Now suspend the machine."
 			print "Please wake machine up manually."
 
+if os.getuid() != 0:
+	print "You need to run this script with root privileges."
+	sys.exit(2)
 		
 for opt, optarg in opts:
 	if opt in ("-h", "--help"):
@@ -72,7 +75,7 @@ for opt, optarg in opts:
 	elif opt in ("-s", "--suspend"):
 		auto_s3 = True
 	else:
-		print "Unknown option " . opt
+		print "Unknown option " + opt
 		usage()
 
 
