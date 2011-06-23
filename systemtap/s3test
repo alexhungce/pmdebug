@@ -40,7 +40,7 @@ def usage():
 	print sys.argv[0] + " [-r|--reboot func] [-f|--flash func] [-b|--beep func] [-s|--suspend]"
 
 try:
-	opts, args = getopt.getopt(sys.argv[1:], "r:f:b:hs", [ "help", "reboot", "flash", "beep", "suspend" ])
+	opts, args = getopt.getopt(sys.argv[1:], "r:f:b:s", [ "help", "reboot", "flash", "beep", "suspend" ])
 except getopt.GetoptError, err:
 	print str(err)
 	usage()
@@ -63,7 +63,7 @@ if os.getuid() != 0:
 	sys.exit(2)
 		
 for opt, optarg in opts:
-	if opt in ("-h", "--help"):
+	if opt in ("--help"):
 		usage()
 		sys.exit(2)
 	elif opt in ("-r", "--reboot"):
