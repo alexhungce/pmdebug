@@ -1,0 +1,151 @@
+#!/usr/bin/python
+
+#
+# Copyright (C) 2011 Canonical
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+#
+
+#
+# TODO:
+#	Intelligent diagnosis from function trace log
+#
+
+import getopt, sys, os
+import commands
+import signal
+import subprocess
+import errno
+import shutil
+
+reboot_func = "#"
+flash_func  = "#"
+beep_func   = "#"
+my_pid = os.getpid()
+auto_s4	= False
+
+def usage():
+	print sys.argv[0] + " [-r|--reboot func] [-f|--flash func] [-b|--beep func] [-h|--hibernate]"
+
+try:
+	opts, args = getopt.getopt(sys.argv[1:], "r:f:b:h", [ "help", "reboot", "flash", "beep", "hibernate" ])
+except getopt.GetoptError, err:
+	print str(err)
+	usage()
+	sys.exit(2)
+
+#
+# s4.stp sends us a SIGUSR1 to indicate it is ready to run
+#
+def sighandler(signum, frame):
+	if signum == signal.SIGUSR1:
+		if auto_s4:
+			print "Hibernating machine.."
+			os.system("pm-hibernate")
+		else:
+			print "Now hibernate the machine."
+			print "Please wake machine up manually."
+
+if os.getuid() != 0:
+	print "You need to run this script with root privileges."
+	sys.exit(2)
+		
+for opt, optarg in opts:
+	if opt in ("-r", "--reboot"):
+		reboot_func = optarg
+	elif opt in ("-f", "--flash"):
+		flash_func = optarg
+	elif opt in ("-b", "--beep"):
+		beep_func = optarg
+	elif opt in ("-h", "--hibernate"):
+		auto_s4 = True
+	elif opt in ("--help"):
+		usage()
+		sys.exit(2)
+	else:
+		print "Unknown option " + opt
+		usage()
+
+
+shutil.copyfile("/proc/kallsyms", "kallsyms.log")
+
+#
+#  Go build systemtap debug and run
+#
+print "Building systemtap debugger (this may take some time).."
+print "If the machine hangs, reboot and run 'locatehang'."
+
+signal.signal(signal.SIGUSR1, sighandler)
+cmd = [ "stap", "-g", "s4.stp", str(my_pid), "\'" + reboot_func + "\'",  "\'" + flash_func + "\'", "\'" + beep_func + "\'" ]
+proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+
+#
+#  Filter output from systemtap script to various logs
+#
+full_log   = open('s4-systemtap.log', 'w')
+trace_log  = open('s4-trace.log', 'w')
+test_log   = open('s4-test.log', 'w')
+device_log = open('s4-devices.log', 'w')
+task_log   = open('s4-tasks.log', 'w')
+
+while True:
+	try:
+		line = proc.stdout.readline()
+		if not line:
+			break
+		if line.find("PM-INFO:",0) == 0:
+			print line,
+		if line.find("PM-TEST:",0) == 0:
+			print line,
+			test_log.write(line)
+		if line.find("PM-TRACE:",0) == 0:
+			#
+			#  need to plug in a function trace
+			#  back end to figure out when things
+			#  fail and provide diagnosis
+			#
+			trace_log.write(line)
+		if line.find("PM-DEV-DEBUG:",0) == 0:
+			device_log.write(line)
+		if line.find("PM-TASK-DEBUG:",0) == 0:
+			task_log.write(line)
+		full_log.write(line)
+	except IOError, x:
+		#
+		#  SIGUSR1 causes readline exception
+		#  so ignore it as a non-error and
+		#  re-read
+		#
+		if x.errno == errno.EAGAIN:
+			raise
+
+proc.wait()
+
+full_log.close()
+trace_log.close()
+test_log.close()
+device_log.close()
+task_log.close()
+
+print "Note:"
+print "  Full trace log in s4-systemtap.log"
+print "  Function trace log in s4-trace.log"
+print "  Device state log in s4-devices.log"
+print "  Task state log in s4-tasks.log"
+print "  Test results in s4-test.log"
+print ""
+
+print "Run 's4diagnose' to get intelligent diagnosis from the logs."
+print "(which needs to be implemented! :-)"
