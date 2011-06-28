@@ -88,7 +88,7 @@ print "Building systemtap debugger (this may take some time).."
 print "If the machine hangs, reboot and run 'locatehang'."
 
 signal.signal(signal.SIGUSR1, sighandler)
-cmd = [ "stap", "-g", "s4.stp", str(my_pid), "\'" + reboot_func + "\'",  "\'" + flash_func + "\'", "\'" + beep_func + "\'" ]
+cmd = [ "stap", "-g", "s4.stp", str(my_pid), reboot_func, flash_func, beep_func  ]
 proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 
 #
