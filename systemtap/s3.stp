@@ -501,6 +501,7 @@ probe kernel.function("disable_nonboot_cpus@kernel/cpu.c").return {
 	}
 }
 
+%( kernel_v > "2.6.38" %?
 probe kernel.function("syscore_suspend@drivers/base/syscore.c") {
 	trace_in("")
 }
@@ -512,6 +513,7 @@ probe kernel.function("syscore_suspend@drivers/base/syscore.c").return {
 		WriteTest(s)
 	}
 }
+%)
 
 probe kernel.function("suspend_valid_only_mem@kernel/power/suspend.c").return {
 	trace_out($$return)
@@ -850,16 +852,16 @@ probe kernel.function("suspend_console@kernel/printk.c").return,
 
 probe kernel.function("pm_noirq_op@drivers/base/power/main.c"),
       kernel.function("device_resume_noirq@drivers/base/power/main.c"),
-      kernel.function("dpm_resume_noirq@drivers/base/power/main.c"),
       kernel.function("legacy_resume@drivers/base/power/main.c"),
       kernel.function("async_resume@drivers/base/power/main.c"),
-      kernel.function("dpm_resume@drivers/base/power/main.c"),
       kernel.function("device_complete@drivers/base/power/main.c"),
       kernel.function("dpm_resume_end@drivers/base/power/main.c"),  
       kernel.function("device_suspend_noirq@drivers/base/power/main.c"),
-      kernel.function("dpm_suspend_noirq@drivers/base/power/main.c"), 
       kernel.function("async_suspend@drivers/base/power/main.c"), 
+      kernel.function("dpm_resume_noirq@drivers/base/power/main.c"),
+      kernel.function("dpm_resume@drivers/base/power/main.c"),
       kernel.function("dpm_complete@drivers/base/power/main.c"),/* */
+      kernel.function("dpm_suspend_noirq@drivers/base/power/main.c"), 
       kernel.function("dpm_suspend@drivers/base/power/main.c"),
       kernel.function("dpm_prepare@drivers/base/power/main.c"),
       kernel.function("dpm_suspend_start@drivers/base/power/main.c"),
@@ -869,12 +871,15 @@ probe kernel.function("pm_noirq_op@drivers/base/power/main.c"),
 
 
 probe kernel.function("dpm_resume_noirq@drivers/base/power/main.c").return,
-      kernel.function("async_resume@drivers/base/power/main.c").return,
       kernel.function("dpm_resume@drivers/base/power/main.c").return,
+%( kernel_v > "2.6.38" %?
+      /* inlined, on some versions, this is a hack */
+      kernel.function("dpm_complete@drivers/base/power/main.c").return,
+%)
+      kernel.function("dpm_resume_end@drivers/base/power/main.c").return,
+      kernel.function("async_resume@drivers/base/power/main.c").return,
       kernel.function("legacy_suspend@drivers/base/power/main.c").return,
       kernel.function("device_complete@drivers/base/power/main.c").return,
-      kernel.function("dpm_complete@drivers/base/power/main.c").return,
-      kernel.function("dpm_resume_end@drivers/base/power/main.c").return,
       kernel.function("device_pm_wait_for_dev@drivers/base/power/main.c").return {
 	trace_out($$return)
 }
@@ -1081,6 +1086,7 @@ probe kernel.function("__device_suspend@drivers/base/power/main.c").return {
 	}
 }
 
+%( kernel_v > "2.6.38" %?
 probe kernel.function("acpi_suspend_lowlevel@arch/x86/kernel/acpi/sleep.c") {
 	trace_in("")
 	s = sprintf("Jumping to do_suspend_lowlevel to save processor state.\n")
@@ -1094,6 +1100,7 @@ probe kernel.function("acpi_suspend_lowlevel@arch/x86/kernel/acpi/sleep.c").retu
 	s = sprintf("Resumed. Assuming BIOS -> kernel transsition works correctly.\n")
 	WriteTest(s)
 }
+%)
 
 probe kernel.function("acpi_enter_sleep_state@drivers/acpi/acpica/hwsleep.c") {
 	trace_in("")
