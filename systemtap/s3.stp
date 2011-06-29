@@ -234,7 +234,7 @@ function hash_symbol(symbol: string) %{
 %}
 
 function hash_dev_func(dev: long, suspend: long) %{
-	struct device *dev = (struct device *)THIS->dev;
+	struct device *dev = (struct device *)(long)THIS->dev;
 	unsigned long suspend = THIS->suspend;
 	unsigned long addr = 0;
 
