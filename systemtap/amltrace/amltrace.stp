@@ -21,17 +21,12 @@
 #include <acpi/acpi.h>
 %}
 
-function null_str:long(str: long) %{
-	char *s = (char *)THIS->str;
-	THIS->__retvalue = (s == NULL);
-%}
-
 function obj_name:string(name:long) %{
-	sprintf(THIS->__retvalue, "%4.4s", (char*)THIS->name);
+	sprintf(THIS->__retvalue, "%4.4s", (char*)(unsigned long)THIS->name);
 %}
 
 probe kernel.function("acpi_evaluate_object@drivers/acpi/acpica/nsxfeval.c") {
-	if (!null_str($pathname))
+	if ($pathname != 0) 
 		name = kernel_string($pathname)
 	else if ($handle != 0)
 		name = obj_name(&@cast($handle, "struct acpi_namespace_node", "kernel")->name)
@@ -42,7 +37,6 @@ probe kernel.function("acpi_evaluate_object@drivers/acpi/acpica/nsxfeval.c") {
 
 function decode_class:string(class: long) %{
 #define CLASS(val, str) case val:	strcpy(THIS->__retvalue, str); break;
-
 	switch (THIS->class) {
 	CLASS(0x00, "EXECUTE")
 	CLASS(0x01, "CREATE")
@@ -57,12 +51,12 @@ function decode_class:string(class: long) %{
 	CLASS(0x0A, "UNKNOWN")
 	default:
 		strcpy(THIS->__retvalue, "UNKNOWN");
+		break;
 	}
 %}
 
 function decode_op:string(opcode: long) %{
 #define OP(val, str) case val:	strcpy(THIS->__retvalue, str); break;
-
 	switch (THIS->opcode) {
 	OP(  0x00, "ZERO_OP")
 	OP(  0x01, "ONE_OP")
@@ -202,29 +196,35 @@ function decode_op:string(opcode: long) %{
 	OP(0x0035, "INT_METHODCALL_OP")
 	OP(0x0036, "INT_RETURN_VALUE_OP")
 	OP(0x0037, "INT_EVAL_SUBTREE_OP")
-
 	default:
 		strcpy(THIS->__retvalue, "UNKNOWN");
 		break;
 	}
-
 %}
 
 function get_node_name:string(name: long) %{
-	sprintf(THIS->__retvalue, "%4.4s", (char*)THIS->name);
+	sprintf(THIS->__retvalue, "%4.4s", (char*)(unsigned long)THIS->name);
 %}
 
-probe kernel.statement("acpi_ds_call_control_method@drivers/acpi/acpica/dsmethod.c:408") {
-	printf("Call %s():\n", get_node_name(&$method_node->name))
+probe kernel.function("acpi_ds_call_control_method@drivers/acpi/acpica/dsmethod.c") {
+	method_node = @cast($this_walk_state, "struct acpi_walk_state", "kernel")->method_call_node
+	if (method_node != 0)
+		printf("Call %s():\n", get_node_name(&@cast(method_node, "struct acpi_namespace_node", "kernel")->name))
 }
 
-probe kernel.statement("acpi_ds_exec_end_op@drivers/acpi/acpica/dswexec.c:370") {
+probe kernel.function("acpi_ds_exec_end_op@drivers/acpi/acpica/dswexec.c") {
+	op_class = @cast($walk_state, "struct acpi_walk_state", "kernel")->op_info->class
 	printf("  Op: 0x%4.4x %-20.20s [0x%2.2x %s]\n", 
 		@cast($walk_state, "struct acpi_walk_state", "kernel")->opcode,
 		decode_op(@cast($walk_state, "struct acpi_walk_state", "kernel")->opcode),
-		$op_class, decode_class($op_class))
+		op_class, decode_class(op_class))
 }
 
 probe begin {
 	printf("Starting ACPI debugger.\n");
+}
+
+probe end {
+	printf("Exiting ACPI debugger.\n");
+	exit()
 }
