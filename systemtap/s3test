@@ -35,12 +35,14 @@ flash_func  = "#"
 beep_func   = "#"
 my_pid = os.getpid()
 auto_s3	= False
+minimodem = 0
+baud = ""
 
 def usage():
-	print sys.argv[0] + " [-r|--reboot func] [-f|--flash func] [-b|--beep func] [-s|--suspend]"
+	print sys.argv[0] + " [-r func|--reboot=func] [-f func|--flash=func] [-b func |--beep=func] [-s|--suspend]"
 
 try:
-	opts, args = getopt.getopt(sys.argv[1:], "r:f:b:s", [ "help", "reboot", "flash", "beep", "suspend" ])
+	opts, args = getopt.getopt(sys.argv[1:], "r:f:b:sm", [ "help", "reboot", "flash=", "beep=", "suspend", "minimodem", "minimodem-funcs", "minimodem-devs", "minimodem-tasks", "minimodem-tests", "minimodem-baud=" ])
 except getopt.GetoptError, err:
 	print str(err)
 	usage()
@@ -74,6 +76,22 @@ for opt, optarg in opts:
 		beep_func = optarg
 	elif opt in ("-s", "--suspend"):
 		auto_s3 = True
+	elif opt in ("-m", "--minimodem"):
+		minimodem = 1024
+	elif opt in ("--minimodem-funcs"):
+		minimodem = minimodem | 1
+	elif opt in ("--minimodem-devs"):
+		minimodem = minimodem | 2
+	elif opt in ("--minimodem-tasks"):
+		minimodem = minimodem | 4
+	elif opt in ("--minimodem-tests"):
+		minimodem = minimodem | 8
+	elif opt in ("--minimodem-baud"):
+		baud = optarg
+		print "Baud: " + baud
+		if not int(baud) in (110, 300, 600, 1200):
+			print "Baud rates must be 110, 300, 600 or 1200"
+			sys.exit(2)
 	else:
 		print "Unknown option " + opt
 		usage()
@@ -88,7 +106,7 @@ print "Building systemtap debugger (this may take some time).."
 print "If the machine hangs, reboot and run 'locatehang'."
 
 signal.signal(signal.SIGUSR1, sighandler)
-cmd = [ "stap", "-g", "-DSTP_NO_OVERLOAD", "s3.stp", str(my_pid), reboot_func, flash_func, beep_func ]
+cmd = [ "stap", "-g", "-DSTP_NO_OVERLOAD", "s3.stp", str(my_pid), reboot_func, flash_func, beep_func, str(minimodem), baud ]
 proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 
 #
