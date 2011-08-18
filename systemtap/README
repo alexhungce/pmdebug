@@ -58,7 +58,44 @@ the 'locatehang' program. This will convert the RTC hash back
 into a function hash and then lookup and determine the last
 instrumented function executed before the machine locked up.
 
-4. Next step...
+4. Extra goodies.
+
+Some PCs allow one to beep the internal speaker, and thus we can use old
+school modem techniques to transmit debug messages over the speaker.  
+One requires a modem to recieve the data on another machine:
+
+sudo apt-get install minimodem
+
+and run minimodem:
+
+minimodem -q --rx 110
+
+(e.g. receive at 110 baud)
+
+and arrange a microphone from this machine to listen to the output from
+the machine you are debugging.
+
+Then use the following options on s3test:
+
+--minimodem --minimodem-baud=110
+	one can use 110, 300, 600 or 1200 baud settings. your milage may vary.
+
+..this will enable the basic minimodem debugging.
+
+And one can use the following for more verbose output:
+
+--minimodem-funcs
+	dump out functions being entered/exited
+--minimodem-tasks
+	dump out names of tasks being frozen/thawed
+--minimodem-tests
+	dump out results from simple S3 sanity tests
+--minimodem-devs
+	dump out names of devices being suspend/resumes
+
+but it can take time to dump this data out.
+
+5. Next step...
 
 	I'm going to write a s3diagnose tool that will look
 at the logs and try and give some kind of intelligent diagnoses.
