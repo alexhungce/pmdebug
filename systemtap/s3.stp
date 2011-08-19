@@ -33,7 +33,7 @@ global reboot_funcname
 global ledflash_funcname
 global beep_funcname
 global parent_pid
-global minimodem 
+global minimodem
 global baud
 
 /*
@@ -98,29 +98,29 @@ void pcspkr_baud(unsigned long baud)
 	case 1200:
 		bfsk_baud = BELL202_BFSK_BAUD;
 		bfsk_mark = BELL202_BFSK_MARK;
-		bfsk_space = BELL202_BFSK_SPACE;		
+		bfsk_space = BELL202_BFSK_SPACE;
 		break;
 	case 600:
 		bfsk_baud = BELLxxx_BFSK_BAUD;
 		bfsk_mark = BELLxxx_BFSK_MARK;
-		bfsk_space = BELLxxx_BFSK_SPACE;		
+		bfsk_space = BELLxxx_BFSK_SPACE;
 		break;
 	case 300:
 		bfsk_baud = BELL103_BFSK_BAUD;
 		bfsk_mark = BELL103_BFSK_MARK;
-		bfsk_space = BELL103_BFSK_SPACE;		
+		bfsk_space = BELL103_BFSK_SPACE;
 		break;
 	case 110:
 	default:
 		bfsk_baud = BELL101_BFSK_BAUD;
 		bfsk_mark = BELL101_BFSK_MARK;
-		bfsk_space = BELL101_BFSK_SPACE;		
+		bfsk_space = BELL101_BFSK_SPACE;
 		break;
 	}
 }
 
 /*
- *  The following pcspkr_ functions were derived from 
+ *  The following pcspkr_ functions were derived from
  *  a driver from Kamal Mostafa which works with his
  *  minimodem project (http://www.whence.com/minimodem
  */
@@ -153,7 +153,7 @@ void pcspkr_delay_nsec(unsigned long duration_nsec)
 		unsigned long duration_usec = duration_nsec / 1000;
 		if (duration_usec > 1000) {
 			unsigned long duration_msec = duration_usec / 1000;
-			if (duration_msec) {	
+			if (duration_msec) {
 				mdelay(duration_msec);
 				duration_usec -= duration_msec * 1000;
 				duration_nsec -= duration_msec * 1000000;
@@ -255,12 +255,12 @@ function handle_args() {
 
 function signal_proc:long(this_pid: long)
 %{
-	pid_t this_pid = (pid_t)THIS->this_pid;	
+	pid_t this_pid = (pid_t)THIS->this_pid;
 	struct pid *pid = find_vpid(this_pid);
 	if (pid) {
 		kill_pid(pid, SIGUSR1, 1);
 		THIS->__retvalue = 0;
-	} else 
+	} else
 		THIS->__retvalue = -1;
 %}
 
@@ -377,7 +377,7 @@ function WriteDeviceDebug(msg: string) {
 function rtc_save_restore(save: long) %{
 
         static struct rtc_time time;
-	
+
 	if ((long)THIS->save)
 		get_rtc_time(&time);
 	else
@@ -398,7 +398,7 @@ function hash_symbol(symbol: string) %{
 			h ^= g;
 		}
 	}
-	
+
 	save_hash_in_RTC(h);
 %}
 
@@ -409,7 +409,7 @@ function hash_dev_func(dev: long, suspend: long) %{
 
 	if (suspend) {
 		if (dev->class) {
-			if (dev->class->pm) 
+			if (dev->class->pm)
 				addr = (unsigned long)dev->class->pm->suspend;
 			else
 				addr = (unsigned long)dev->class->suspend;
@@ -427,7 +427,7 @@ function hash_dev_func(dev: long, suspend: long) %{
 		}
 	} else {
 		if (dev->class) {
-			if (dev->class->pm) 
+			if (dev->class->pm)
 				addr = (unsigned long)dev->class->pm->resume;
 			else
 				addr = (unsigned long)dev->class->resume;
@@ -455,7 +455,7 @@ probe kernel.function("__device_suspend@drivers/base/power/main.c") {
 }
 
 probe kernel.function("__thaw_process@kernel/freezer.c") {
-	s = sprintf("thaw task %d \"%s\"\n", 
+	s = sprintf("thaw task %d \"%s\"\n",
 		$p->pid, kernel_string($p->comm))
 	WriteTaskDebug(s)
 	tasks_thawed[$p->pid] = 1
@@ -492,13 +492,13 @@ probe end {
 	s = sprintf("%d functions entered, %d functions returned.\n",
 		entered_count, returned_count)
 	WriteInfo(s)
-	
+
 	s = sprintf("%d tasks frozen and %d tasks thawed.\n", frozen_count, thawed_count)
 	WriteInfo(s)
 
 	foreach (frozen in tasks_frozen)
 		if (!([frozen] in tasks_thawed)) {
-			s = sprintf("Task pid:%d '%s' was frozen but NOT thawed.\n", 
+			s = sprintf("Task pid:%d '%s' was frozen but NOT thawed.\n",
 				frozen, tasks_frozen_names[frozen])
 			WriteTest(s)
 	}
@@ -543,7 +543,7 @@ function trace_out(ret: string)
 		beep(0,0)
 	}
 	funcs_returned[f] = 1
-	if (ret == "") 
+	if (ret == "")
 		s = sprintf("<- %s()\n", f)
 	else
 		s = sprintf("<- %s() %s\n", f, ret)
@@ -570,7 +570,7 @@ probe kernel.function("suspend_valid_only_mem@kernel/power/suspend.c"),
 }
 
 /* Would like to debug this, but it's inlined! */
-/* 
+/*
 probe kernel.function("suspend_prepare@kernel/power/suspend.c").return {
 	trace_out($$return)
 
@@ -711,8 +711,8 @@ probe kernel.function("pm_suspend@kernel/power/suspend.c").return {
 	}
 }
 
-/* 
- *  kernel/power/suspend_test.c tests 
+/*
+ *  kernel/power/suspend_test.c tests
  *  	used for suspend testing, so trace enter/exit points but
  *	don't care about failure returns
  */
@@ -733,7 +733,7 @@ probe kernel.function("*@drivers/acpi/nvs.c") {
 	trace_in("")
 }
 
-probe kernel.function("suspend_nvs_register@drivers/acpi/nvs.c").return, 
+probe kernel.function("suspend_nvs_register@drivers/acpi/nvs.c").return,
       kernel.function("suspend_nvs_alloc@drivers/acpi/nvs.c").return,
       kernel.function("suspend_nvs_save@drivers/acpi/nvs.c").return {
 	trace_out($$return)
@@ -754,8 +754,8 @@ probe kernel.function("suspend_nvs_free@drivers/acpi/nvs.c").return,
 
 /* ---------------------------------------------------- */
 
-/* 
- *  kernel/power/process.c tests 
+/*
+ *  kernel/power/process.c tests
  */
 probe kernel.function("*@kernel/power/process.c")
 {
@@ -768,7 +768,7 @@ probe kernel.function("thaw_tasks@kernel/power/process.c").return,
 }
 
 /*
- *  test task freezing 
+ *  test task freezing
  */
 probe kernel.function("try_to_freeze_tasks@kernel/power/process.c").return {
 	trace_out($$return)
@@ -784,7 +784,7 @@ probe kernel.function("try_to_freeze_tasks@kernel/power/process.c").return {
 }
 
 /*
- *  test freeze_processes 
+ *  test freeze_processes
  */
 probe kernel.function("freeze_processes@kernel/power/process.c").return {
 	trace_out($$return)
@@ -818,7 +818,7 @@ probe kernel.function("*@kernel/power/user.c").return {
 /* ---------------------------------------------------- */
 
 probe kernel.function("freeze_task@kernel/freezer.c") {
-	s = sprintf("freeze task %d \"%s\"\n", 
+	s = sprintf("freeze task %d \"%s\"\n",
 		$p->pid, kernel_string($p->comm))
 	WriteTaskDebug(s)
 	tasks_frozen[$p->pid] = 1
@@ -830,13 +830,13 @@ probe kernel.function("__thaw_process@kernel/freezer.c") {
 	//s = sprintf("thaw task %d \"%s\"\n",
 		$p->pid, kernel_string($p->comm))
 	//WriteInfo(s)
-}	
+}
 */
 
 /* ---------------------------------------------------- */
 
 /*
- * Interesting funcs in drivers/acpi/sleep 
+ * Interesting funcs in drivers/acpi/sleep
  */
 probe kernel.function("acpi_sleep_tts_switch@drivers/acpi/sleep.c"),
       kernel.function("tts_notify_reboot@drivers/acpi/sleep.c"),
@@ -857,7 +857,7 @@ probe kernel.function("acpi_sleep_tts_switch@drivers/acpi/sleep.c"),
 	trace_in("")
 }
 
-/* Following are in-lined, so cannot be traced :-( 
+/* Following are in-lined, so cannot be traced :-(
  *
  *    "acpi_nvs_nosave@drivers/acpi/sleep.c"
  *    "__acpi_pm_prepare@drivers/acpi/sleep.c")
@@ -892,7 +892,7 @@ probe kernel.function("acpi_suspend_begin@drivers/acpi/sleep.c").return {
 		WriteTest(s)
 	}
 }
-	
+
 probe kernel.function("acpi_suspend_enter@drivers/acpi/sleep.c").return {
 	trace_out($$return)
 	if (errno_str($return) == "EINVAL") {
@@ -1002,13 +1002,13 @@ probe kernel.function("pm_noirq_op@drivers/base/power/main.c"),
       kernel.function("legacy_resume@drivers/base/power/main.c"),
       kernel.function("async_resume@drivers/base/power/main.c"),
       kernel.function("device_complete@drivers/base/power/main.c"),
-      kernel.function("dpm_resume_end@drivers/base/power/main.c"),  
+      kernel.function("dpm_resume_end@drivers/base/power/main.c"),
       kernel.function("device_suspend_noirq@drivers/base/power/main.c"),
-      kernel.function("async_suspend@drivers/base/power/main.c"), 
+      kernel.function("async_suspend@drivers/base/power/main.c"),
       kernel.function("dpm_resume_noirq@drivers/base/power/main.c"),
       kernel.function("dpm_resume@drivers/base/power/main.c"),
       kernel.function("dpm_complete@drivers/base/power/main.c"),/* */
-      kernel.function("dpm_suspend_noirq@drivers/base/power/main.c"), 
+      kernel.function("dpm_suspend_noirq@drivers/base/power/main.c"),
       kernel.function("dpm_suspend@drivers/base/power/main.c"),
       kernel.function("dpm_prepare@drivers/base/power/main.c"),
       kernel.function("dpm_suspend_start@drivers/base/power/main.c"),
@@ -1046,7 +1046,7 @@ probe kernel.function("async_suspend@drivers/base/power/main.c") {
 
 probe kernel.function("async_suspend@drivers/base/power/main.c").return {
 	trace_out("")
-	
+
 }
 
 probe kernel.function("pm_noirq_op@drivers/base/power/main.c").return {
@@ -1115,7 +1115,7 @@ probe kernel.function("dpm_suspend@drivers/base/power/main.c").return {
 	if (dev_fail > 0) {
 		devs = ""
 		foreach (dev in devices_suspended)
-			if (devices_suspended[dev] == 0) 
+			if (devices_suspended[dev] == 0)
 				devs = " " . dev
 
 		s = sprintf("Devices that failed to suspend: %s.\n", devs)
@@ -1146,7 +1146,7 @@ probe kernel.function("device_resume@drivers/base/power/main.c") {
 	hash_dev_func($dev, 0)
 	saved_device_name = device_name($dev)
 	saved_device_driver_name = device_driver_name($dev)
-	
+
 }
 
 probe kernel.function("device_resume@drivers/base/power/main.c").return {
@@ -1183,7 +1183,7 @@ probe kernel.function("dpm_resume@drivers/base/power/main.c").return {
 	if (dev_fail > 0) {
 		devs = ""
 		foreach (dev in devices_resumed)
-			if (devices_resumed[dev] == 0) 
+			if (devices_resumed[dev] == 0)
 				devs = " " . dev
 
 		s = sprintf("Devices that failed to resume: %s.\n", devs)
@@ -1215,7 +1215,7 @@ probe kernel.function("dpm_prepare@drivers/base/power/main.c").return {
 }
 
 probe kernel.function("device_suspend@drivers/base/power/main.c") {
-	s = sprintf("suspend dev: %s (%s)\n", 
+	s = sprintf("suspend dev: %s (%s)\n",
 		device_name($dev), device_driver_name($dev))
 	WriteDeviceDebug(s)
 	saved_device_name = device_name($dev)
@@ -1227,7 +1227,7 @@ probe kernel.function("__device_suspend@drivers/base/power/main.c").return {
 		devices_suspended[device_name($dev)] = 1;
 	} else {
 		devices_suspended[device_name($dev)] = 0;
-		s = sprintf("__device_suspend(): device %s (%s) failed to suspend.\n", 
+		s = sprintf("__device_suspend(): device %s (%s) failed to suspend.\n",
 			saved_device_name, saved_device_driver_name)
 		WriteTest(s)
 	}
