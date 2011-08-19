@@ -243,7 +243,7 @@ function handle_args() {
 
 function signal_proc:long(this_pid: long)
 %{
-	pid_t this_pid = (pid_t)THIS->this_pid;	
+	pid_t this_pid = (pid_t)THIS->this_pid;
 	struct pid *pid = find_vpid(this_pid);
 	if (pid) {
 		kill_pid(pid, SIGUSR1, 1);
@@ -367,7 +367,7 @@ function WriteDeviceDebug(msg: string) {
 function rtc_save_restore(save: long) %{
 
         static struct rtc_time time;
-	
+
 	if ((long)THIS->save)
 		get_rtc_time(&time);
 	else
@@ -387,7 +387,7 @@ function hash_symbol:long(symbol: string) %{
 			h ^= g;
 		}
 	}
-	
+
 	h %= RTC_HASH_MAX;
 
 	THIS->__retvalue = h;
@@ -457,7 +457,7 @@ function store_hash_long(h: long) %{
         };
 
 	h %= RTC_HASH_MAX;
-	
+
         time.tm_year = (h % 100);
         h /= 100;
         time.tm_mon = (h % 12);
@@ -517,7 +517,7 @@ function pm_noirq_op_ops:long(dev: long) %{
 	else if (dev->class && dev->class->pm)
 		ops = dev->class->pm;
 	else if (dev->bus && dev->bus->pm)
-		ops = dev->bus->pm;	
+		ops = dev->bus->pm;
 	else
 		ops = NULL;
 
@@ -533,7 +533,7 @@ probe kernel.function("__device_suspend@drivers/base/power/main.c") {
 }
 
 probe kernel.function("__thaw_process@kernel/freezer.c") {
-	s = sprintf("thaw task %d \"%s\"\n", 
+	s = sprintf("thaw task %d \"%s\"\n",
 		$p->pid, kernel_string($p->comm))
 	WriteTaskDebug(s)
 	tasks_thawed[$p->pid] = 1
@@ -569,7 +569,7 @@ probe end {
 	s = sprintf("%d functions entered, %d functions returned.\n",
 		entered_count, returned_count)
 	WriteInfo(s)
-	
+
 	s = sprintf("%d tasks frozen and %d tasks thawed.\n", frozen_count, thawed_count)
 	WriteInfo(s)
 
@@ -656,7 +656,7 @@ probe kernel.function("panic@kernel/panic.c"),
  *				create_bm_block_list()
  *				get_image_page() --> NULL --> NO MEM
  *			mark_nosave_pages()
- *			
+ *
  *		sys_sync()
  *			if we got here, we are doing well
  *		prepare_processes()
@@ -664,7 +664,7 @@ probe kernel.function("panic@kernel/panic.c"),
  *				try_to_freeze_tasks(true) --> -EBUSY
  *				try_to_freeze_tasks(false) --> -EBUSY
  *				oom_killer_disable() [ inlines, won't fail ]
- *			
+ *
  *		hibernation_snapshot()
  *			platform_begin() --> ?
  *				hibernation_ops->begin()
@@ -726,7 +726,7 @@ probe kernel.function("panic@kernel/panic.c"),
  *					device_suspend_noirq() --> ??
  *						pm_noirq_op() --> INVAL,
  *							ops->suspend_noirq()
- *							
+ *
  *				platform_pre_snapshot() --> ??
  *					hibernation_ops->pre_snapshot()
  *						acpi_pm_prepare() --> ??
@@ -738,11 +738,11 @@ probe kernel.function("panic@kernel/panic.c"),
  *							acpi_pm_pre_suspend() --> ??
  *								acpi_pm_freeze() [ no ret ]
  *								suspend_nvs_save --> ENOMEM
- *								
+ *
  *					or	acpi_pm_pre_suspend()
  *							acpi_pm_freeze() [ no ret ]
  *							suspend_nvs_save --> ENOMEM
- *						
+ *
  *				disable_nonboot_cpus() --> ?? (not yet figured out what the error is)
  *				local_irq_disable() [ no ret ]
  *				syscore_suspend() --> ??
@@ -764,7 +764,7 @@ probe kernel.function("panic@kernel/panic.c"),
  *							swsusp_free() on failure to free pages
  *						drain_local_pages() [ no ret ]
  *						copy_data_pages() [ no ret ]
- *						
+ *
  *				magic ... resume back here
  *				restore_processor_state() [ no ret ]
  *				platform_leave() [ no ret ]
@@ -773,7 +773,7 @@ probe kernel.function("panic@kernel/panic.c"),
  *				enable_nonboot_cpus) [ no ret ]
  *				platform_finish() [ no ret ]
  *				dpm_resume_noirq() [ no ret ]
- *			
+ *
  * resume_devices:
  *			dpm_resume() --> [ no ret ]
  *			pm_restore_gfp_mask() [ no ret ]
@@ -810,8 +810,8 @@ probe kernel.function("panic@kernel/panic.c"),
  *		usermodehelper_enable()
  *		pm_notifier_call_chain()
  *		pm_restore_console()
- *	
- *		
+ *
+ *
  *
  */
 
@@ -1405,7 +1405,7 @@ probe kernel.function("swap_write_page@kernel/power/swap.c").return {
 	if (errno_str($return) == "EINVAL")
 		WriteTest("swap_write_page(): failed, handle->cur is not set.\n")
 	else if (errno_str($return) == "ENOSPC")
-		WriteTest("swap_write_page(): failed, no more free swap space.\n")	
+		WriteTest("swap_write_page(): failed, no more free swap space.\n")
 	else if ($return != 0) {
 		s = sprintf("swap_write_page(): failed, unknown reason: %d.\n", $return)
 		WriteTest(s)
@@ -1659,7 +1659,7 @@ probe kernel.function("*@kernel/power/user.c").return {
 /* ---------------------------------------------------- */
 
 probe kernel.function("freeze_task@kernel/freezer.c") {
-	s = sprintf("freeze task %d \"%s\"\n", 
+	s = sprintf("freeze task %d \"%s\"\n",
 		$p->pid, kernel_string($p->comm))
 	WriteTaskDebug(s)
 	tasks_frozen[$p->pid] = 1
@@ -1670,7 +1670,7 @@ probe kernel.function("freeze_task@kernel/freezer.c") {
 probe kernel.function("__thaw_process@kernel/freezer.c") {
 	//s = sprintf("thaw task %d \"%s\"\n", $p->pid, kernel_string($p->comm))
 	//WriteInfo(s)
-}	
+}
 */
 
 /* ---------------------------------------------------- */
@@ -1731,7 +1731,7 @@ probe kernel.function("acpi_suspend_begin@drivers/acpi/sleep.c").return {
 		WriteTest(s)
 	}
 }
-	
+
 probe kernel.function("acpi_suspend_enter@drivers/acpi/sleep.c").return {
 	trace_out($$return)
 	if (errno_str($return) == "EINVAL") {
@@ -1963,7 +1963,7 @@ probe kernel.function("device_resume@drivers/base/power/main.c") {
 	store_hash_long(h)
 	saved_device_name = device_name($dev)
 	saved_device_driver_name = device_driver_name($dev)
-	
+
 }
 
 probe kernel.function("device_resume@drivers/base/power/main.c").return {
