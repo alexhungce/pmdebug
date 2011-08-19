@@ -63,7 +63,7 @@ def sighandler(signum, frame):
 if os.getuid() != 0:
 	print "You need to run this script with root privileges."
 	sys.exit(2)
-		
+
 for opt, optarg in opts:
 	if opt in ("-r", "--reboot"):
 		reboot_func = optarg
