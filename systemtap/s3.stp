@@ -85,7 +85,6 @@ static DEFINE_RAW_SPINLOCK(i8253_lock);
 
 #define PCSP_MODEM_DEFAULT_BFSK_STOPBITSX10	10
 
-#define RTC_HASH_MAX 16127999
 
 /* Defaults */
 static int bfsk_baud		= BELL101_BFSK_BAUD;
@@ -198,6 +197,38 @@ void pcspkr_generate_bfsk(const char *str)
 		mdelay(1);
     	}
 	pcspkr_tone(0);
+}
+
+#define RTC_HASH_MAX 16127999
+
+void save_hash_in_RTC(unsigned long hash)
+{
+        static struct rtc_time time = {
+                .tm_sec = 0,
+                .tm_min = 0,
+                .tm_hour = 0,
+                .tm_mday = 7,
+                .tm_mon = 5,
+                .tm_year = 106,
+                .tm_wday = 3,
+                .tm_yday = 160,
+                .tm_isdst = 1
+        };
+
+	hash %= RTC_HASH_MAX;
+
+        time.tm_year = (hash % 100);
+        hash /= 100;
+        time.tm_mon = (hash % 12);
+        hash /= 12;
+        time.tm_mday = (hash % 28) + 1;
+        hash /= 28;
+        time.tm_hour = (hash % 24);
+        hash /= 24;
+        time.tm_min = (hash % 20) * 3;
+        hash /= 20;
+
+        set_rtc_time(&time);
 }
 
 %}
@@ -353,18 +384,7 @@ function hash_symbol(symbol: string) %{
 	const char *str = (char*)THIS->symbol;
 	unsigned long g,h = 0;
 
-        static struct rtc_time time = {
-                .tm_sec = 0,
-                .tm_min = 0,
-                .tm_hour = 0,
-                .tm_mday = 7,
-                .tm_mon = 5,
-                .tm_year = 106,
-                .tm_wday = 3,
-                .tm_yday = 160,
-                .tm_isdst = 1
-        };
-
+	/* Hash PJW, Dragon book, Aho, Sethi, Ullman */
 	for (s = str; *s; s++) {
 		h = (h<<4) + *s;
 		g = h & 0xf0000000;
@@ -374,38 +394,13 @@ function hash_symbol(symbol: string) %{
 		}
 	}
 	
-	h %= RTC_HASH_MAX;
-
-        time.tm_year = (h % 100);
-        h /= 100;
-        time.tm_mon = (h % 12);
-        h /= 12;
-        time.tm_mday = (h % 28) + 1;
-        h /= 28;
-        time.tm_hour = (h % 24);
-        h /= 24;
-        time.tm_min = (h % 20) * 3;
-        h /= 20;
-
-        set_rtc_time(&time);
+	save_hash_in_RTC(h);
 %}
 
 function hash_dev_func(dev: long, suspend: long) %{
 	struct device *dev = (struct device *)(long)THIS->dev;
 	unsigned long suspend = THIS->suspend;
 	unsigned long addr = 0;
-
-        static struct rtc_time time = {
-                .tm_sec = 0,
-                .tm_min = 0,
-                .tm_hour = 0,
-                .tm_mday = 7,
-                .tm_mon = 5,
-                .tm_year = 106,
-                .tm_wday = 3,
-                .tm_yday = 160,
-                .tm_isdst = 1
-        };
 
 	if (suspend) {
 		if (dev->class) {
@@ -445,20 +440,7 @@ function hash_dev_func(dev: long, suspend: long) %{
 		}
 	}
 
-	addr %= RTC_HASH_MAX;
-	
-        time.tm_year = (addr % 100);
-        addr /= 100;
-        time.tm_mon = (addr % 12);
-        addr /= 12;
-        time.tm_mday = (addr % 28) + 1;
-        addr /= 28;
-        time.tm_hour = (addr % 24);
-        addr /= 24;
-        time.tm_min = (addr % 20) * 3;
-        addr /= 20;
-
-        set_rtc_time(&time);
+	save_hash_in_RTC(addr);
 %}
 
 probe kernel.function("__device_suspend@drivers/base/power/main.c") {
