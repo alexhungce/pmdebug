@@ -119,6 +119,11 @@ void pcspkr_baud(unsigned long baud)
 	}
 }
 
+/*
+ *  The following pcspkr_ functions were derived from 
+ *  a driver from Kamal Mostafa which works with his
+ *  minimodem project (http://www.whence.com/minimodem
+ */
 void pcspkr_tone(unsigned long frequency)
 {
 	static unsigned int pcspkr_current_frequency;
