@@ -455,7 +455,8 @@ probe kernel.function("__device_suspend@drivers/base/power/main.c") {
 }
 
 probe kernel.function("__thaw_process@kernel/freezer.c") {
-	s = sprintf("thawing task \"%s\"\n", kernel_string($p->comm))
+	s = sprintf("thaw task %d \"%s\"\n", 
+		$p->pid, kernel_string($p->comm))
 	WriteTaskDebug(s)
 	tasks_thawed[$p->pid] = 1
 }
@@ -817,7 +818,8 @@ probe kernel.function("*@kernel/power/user.c").return {
 /* ---------------------------------------------------- */
 
 probe kernel.function("freeze_task@kernel/freezer.c") {
-	s = sprintf("freezing task \"%s\"\n", kernel_string($p->comm))
+	s = sprintf("freeze task %d \"%s\"\n", 
+		$p->pid, kernel_string($p->comm))
 	WriteTaskDebug(s)
 	tasks_frozen[$p->pid] = 1
 	tasks_frozen_names[$p->pid] = kernel_string($p->comm)
@@ -825,7 +827,8 @@ probe kernel.function("freeze_task@kernel/freezer.c") {
 
 /*
 probe kernel.function("__thaw_process@kernel/freezer.c") {
-	//s = sprintf("thawing task \"%s\"\n", kernel_string($p->comm))
+	//s = sprintf("thaw task %d \"%s\"\n",
+		$p->pid, kernel_string($p->comm))
 	//WriteInfo(s)
 }	
 */
