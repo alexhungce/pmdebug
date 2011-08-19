@@ -33,11 +33,15 @@ global reboot_funcname
 global ledflash_funcname
 global beep_funcname
 global parent_pid
+global minimodem
+global baud
 
 global pages_copied
 global free_swap
 global saved_nr_pages
 global saved_flags
+
+
 
 
 /*
@@ -66,6 +70,164 @@ global saved_flags
 #define LZO_CMP_PAGES		DIV_ROUND_UP(lzo1x_worst_compress(LZO_UNC_SIZE) + \
                                      LZO_HEADER, PAGE_SIZE)
 
+/* for minimodem */
+#include <linux/kernel.h>
+#include <linux/fs.h>
+#include <linux/delay.h>
+#include <asm/io.h>
+#if defined(CONFIG_MIPS) || defined(CONFIG_X86)
+/* Use the global PIT lock ! */
+# include <asm/i8253.h>
+#else
+# include <asm/8253pit.h>
+static DEFINE_RAW_SPINLOCK(i8253_lock);
+#endif
+
+/* Bell 101 (110 baud) binary AFSK frequencies */
+#define BELL101_BFSK_BAUD		110
+#define	BELL101_BFSK_MARK		1270
+#define BELL101_BFSK_SPACE		1070
+
+/* Bell 103 (300 baud) binary AFSK frequencies */
+#define BELL103_BFSK_BAUD		300
+#define	BELL103_BFSK_MARK		1270
+#define BELL103_BFSK_SPACE		1070
+
+/* Bell ??? (600 baud) binary AFSK frequencies */
+#define BELLxxx_BFSK_BAUD		600
+#define	BELLxxx_BFSK_MARK		1270
+#define BELLxxx_BFSK_SPACE		1070
+
+/* Bell 202 (1200 baud) binary AFSK frequencies */
+#define BELL202_BFSK_BAUD		1200
+#define	BELL202_BFSK_MARK		1200
+#define BELL202_BFSK_SPACE		2200
+
+#define PCSP_MODEM_DEFAULT_BFSK_STOPBITSX10	10
+
+
+/* Defaults */
+static int bfsk_baud		= BELL101_BFSK_BAUD;
+static int bfsk_mark		= BELL101_BFSK_MARK;
+static int bfsk_space		= BELL101_BFSK_SPACE;
+static int bfsk_stopbitsX10	= PCSP_MODEM_DEFAULT_BFSK_STOPBITSX10;
+
+void pcspkr_baud(unsigned long baud)
+{
+	switch (baud) {
+	case 1200:
+		bfsk_baud = BELL202_BFSK_BAUD;
+		bfsk_mark = BELL202_BFSK_MARK;
+		bfsk_space = BELL202_BFSK_SPACE;
+		break;
+	case 600:
+		bfsk_baud = BELLxxx_BFSK_BAUD;
+		bfsk_mark = BELLxxx_BFSK_MARK;
+		bfsk_space = BELLxxx_BFSK_SPACE;
+		break;
+	case 300:
+		bfsk_baud = BELL103_BFSK_BAUD;
+		bfsk_mark = BELL103_BFSK_MARK;
+		bfsk_space = BELL103_BFSK_SPACE;
+		break;
+	case 110:
+	default:
+		bfsk_baud = BELL101_BFSK_BAUD;
+		bfsk_mark = BELL101_BFSK_MARK;
+		bfsk_space = BELL101_BFSK_SPACE;
+		break;
+	}
+}
+
+/*
+ *  The following pcspkr_ functions were derived from
+ *  a driver from Kamal Mostafa which works with his
+ *  minimodem project (http://www.whence.com/minimodem
+ */
+void pcspkr_tone(unsigned long frequency)
+{
+	static unsigned int pcspkr_current_frequency;
+	unsigned char val;
+
+	if (frequency != pcspkr_current_frequency) {
+		if (pcspkr_current_frequency == 0)
+                	outb_p(0xb6, 0x43); /* Ctr 2, squarewave, binary */
+
+		if (frequency > 20 && frequency < 32767) {
+			unsigned int count = (PIT_TICK_RATE + frequency/2) / frequency;
+			/* write count to select desired tone frequency */
+			outb_p(count & 0xff, 0x42);
+			outb_p((count >> 8) & 0xff, 0x42);
+			val = inb_p(0x61) | 0x03;	/* on */
+		} else
+			val = inb_p(0x61) & 0xfc;	/* off */
+
+		outb_p(val, 0x61);
+		pcspkr_current_frequency = frequency;
+	}
+}
+
+void pcspkr_delay_nsec(unsigned long duration_nsec)
+{
+	if (duration_nsec > 1000) {
+		unsigned long duration_usec = duration_nsec / 1000;
+		if (duration_usec > 1000) {
+			unsigned long duration_msec = duration_usec / 1000;
+			if (duration_msec) {
+				mdelay(duration_msec);
+				duration_usec -= duration_msec * 1000;
+				duration_nsec -= duration_msec * 1000000;
+			}
+		}
+		if (duration_usec) {
+			udelay(duration_usec);
+			duration_nsec -= duration_usec * 1000;
+		}
+	}
+	if (duration_nsec)
+		ndelay(duration_nsec);
+}
+
+void pcspkr_tone_nsec(unsigned long frequency, unsigned long duration_nsec)
+{
+    	pcspkr_tone(frequency);
+    	pcspkr_delay_nsec(duration_nsec);
+}
+
+void pcspkr_generate_bfsk(const char *str)
+{
+	unsigned long flags;
+	unsigned long nsec = (1000000000 + bfsk_baud/2) / bfsk_baud;
+
+	pcspkr_tone_nsec(bfsk_mark, 500*1000*1000);	/* 500ms leader tone */
+
+	raw_spin_lock_irqsave(&i8253_lock, flags);
+	while (*str) {
+		int i;
+		unsigned char c = *str++;
+
+
+		/*
+        	 * generate 8-bit ASCII framing pattern:
+		 *	1.0 start bit (bfsk_space)
+		 *	8.0 data bits (1==bfsk_mark, lsb first)
+		 *	m.n stop bits (bfsk_mark)
+		 */
+		pcspkr_tone_nsec(bfsk_space, nsec);
+		for (i=0; i<8; i++)
+			pcspkr_tone_nsec((c & (1<<i)) ? bfsk_mark : bfsk_space, nsec);
+		pcspkr_tone_nsec(bfsk_mark, bfsk_stopbitsX10 * nsec / 10);
+
+		mdelay(1);
+    	}
+	raw_spin_unlock_irqrestore(&i8253_lock, flags);
+	pcspkr_tone(0);
+}
+
+%}
+
+function set_baud(baud: long) %{
+	pcspkr_baud(THIS->baud);
 %}
 
 function handle_args() {
@@ -73,6 +235,10 @@ function handle_args() {
 	reboot_funcname = @2
 	ledflash_funcname = @3
 	beep_funcname = @4
+	minimodem = strtol(@5, 10)
+	baud = strtol(@6, 10)
+
+	set_baud(baud)
 }
 
 function signal_proc:long(this_pid: long)
@@ -117,27 +283,8 @@ function led_flash() %{
  *  Beep at freq Hz.
  */
 function beep(freq: long, delay: long) %{
-	unsigned int frequency = THIS->freq;
-	unsigned int enable;
-
-        if (!frequency) {
-                enable = 0x00;          /* Turn off speaker */
-        } else {
-                unsigned short div = PIT_TICK_RATE / frequency;
-                outb(0xb6, 0x43);       /* Ctr 2, squarewave, load, binary */
-                udelay(1);
-                outb(div, 0x42);        /* LSB of counter */
-                udelay(1);
-                outb(div >> 8, 0x42);   /* MSB of counter */
-                udelay(1);
-                enable = 0x03;          /* Turn on speaker */
-        }
-        inb(0x61);              /* Dummy read of System Control Port B */
-        udelay(1);
-        outb(enable, 0x61);     /* Enable timer 2 output to speaker */
-	mdelay(THIS->delay);
+        pcspkr_tone_nsec(THIS->freq, THIS->delay * 1000000);
 %}
-
 
 /*
  *  Dirty reboot via ICH
@@ -164,6 +311,11 @@ function device_driver_name:string (dev: long) %{
 	strlcpy(THIS->__retvalue, dev_driver_string(dev), MAXSTRINGLEN);
 %}
 
+function bfsk_write(msg: string) %{
+	char *str = (char*)THIS->msg;
+	pcspkr_generate_bfsk(str);
+%}
+
 function console_write(msg: string) %{
 	char *str = (char*)THIS->msg;
 
@@ -171,31 +323,43 @@ function console_write(msg: string) %{
 %}
 
 function WriteTrace(msg: string) {
+	if (minimodem & 1)
+		bfsk_write(msg)
 	printf("PM-TRACE: %s", msg)
 	console_write(msg)
 }
 
 function WriteInfo(msg: string) {
+	if (minimodem)
+		bfsk_write(msg)
 	printf("PM-INFO: %s", msg)
 	console_write(msg)
 }
 
 function WriteTest(msg: string) {
+	if (minimodem & 8)
+		bfsk_write(msg)
 	printf("\nPM-TEST: %s\n", msg)
 	console_write(msg)
 }
 
 function WriteDebug(msg: string) {
+	if (minimodem)
+		bfsk_write(msg)
 	printf("PM-DEBUG: %s", msg)
 	console_write(msg)
 }
 
 function WriteTaskDebug(msg: string) {
+	if (minimodem & 4)
+		bfsk_write(msg)
 	printf("PM-TASK-DEBUG: %s", msg)
 	console_write(msg)
 }
 
 function WriteDeviceDebug(msg: string) {
+	if (minimodem & 2)
+		bfsk_write(msg)
 	printf("PM-DEV-DEBUG: %s", msg)
 	console_write(msg)
 }
@@ -369,7 +533,8 @@ probe kernel.function("__device_suspend@drivers/base/power/main.c") {
 }
 
 probe kernel.function("__thaw_process@kernel/freezer.c") {
-	s = sprintf("thawing task \"%s\"\n", kernel_string($p->comm))
+	s = sprintf("thaw task %d \"%s\"\n", 
+		$p->pid, kernel_string($p->comm))
 	WriteTaskDebug(s)
 	tasks_thawed[$p->pid] = 1
 }
@@ -435,9 +600,9 @@ function trace_in(str: string)
 
 	funcs_entered[f] = 1
 	if (str == "")
-		s = sprintf("called -> %s()\n", f)
+		s = sprintf("-> %s()\n", f)
 	else
-		s = sprintf("called -> %s() %s\n", f, str)
+		s = sprintf("-> %s() %s\n", f, str)
 	WriteTrace(s)
 }
 
@@ -456,9 +621,9 @@ function trace_out(ret: string)
 	}
 	funcs_returned[f] = 1
 	if (ret == "")
-		s = sprintf("return <- %s()\n", f)
+		s = sprintf("<- %s()\n", f)
 	else
-		s = sprintf("return <- %s() [%s]\n", f, ret)
+		s = sprintf("<- %s() [%s]\n", f, ret)
 	WriteTrace(s)
 }
 
@@ -750,6 +915,7 @@ probe kernel.function("get_image_page@kernel/power/snapshot.c") {
 }
 
 probe kernel.function("get_image_page@kernel/power/snapshot.c").return {
+	trace_out($$return)
 	if ($return == 0)
 		WriteTest("get_image_page() failed to get a zero'd page. Out\nof memory!\n");
 }
@@ -1493,7 +1659,8 @@ probe kernel.function("*@kernel/power/user.c").return {
 /* ---------------------------------------------------- */
 
 probe kernel.function("freeze_task@kernel/freezer.c") {
-	s = sprintf("freezing task \"%s\"\n", kernel_string($p->comm))
+	s = sprintf("freeze task %d \"%s\"\n", 
+		$p->pid, kernel_string($p->comm))
 	WriteTaskDebug(s)
 	tasks_frozen[$p->pid] = 1
 	tasks_frozen_names[$p->pid] = kernel_string($p->comm)
@@ -1501,7 +1668,7 @@ probe kernel.function("freeze_task@kernel/freezer.c") {
 
 /*
 probe kernel.function("__thaw_process@kernel/freezer.c") {
-	//s = sprintf("thawing task \"%s\"\n", kernel_string($p->comm))
+	//s = sprintf("thaw task %d \"%s\"\n", $p->pid, kernel_string($p->comm))
 	//WriteInfo(s)
 }	
 */
@@ -1722,13 +1889,13 @@ probe kernel.function("dpm_resume_noirq@drivers/base/power/main.c").return,
 probe kernel.function("device_prepare@drivers/base/power/main.c"),
       kernel.function("legacy_suspend@drivers/base/power/main.c") {
 	trace_in(s)
-	s = sprintf("device: %s (%s)\n", device_name($dev), device_driver_name($dev))
+	s = sprintf("dev: %s (%s)\n", device_name($dev), device_driver_name($dev))
 	WriteDeviceDebug(s)
 }
 
 probe kernel.function("async_suspend@drivers/base/power/main.c") {
 	trace_in(s)
-	s = sprintf("device: %s (%s)\n", device_name($data), device_driver_name($data))
+	s = sprintf("dev: %s (%s)\n", device_name($data), device_driver_name($data))
 	WriteDeviceDebug(s)
 }
 
@@ -1865,7 +2032,7 @@ probe kernel.function("dpm_prepare@drivers/base/power/main.c").return {
 }
 
 probe kernel.function("device_suspend@drivers/base/power/main.c") {
-	s = sprintf("suspending device %s (%s)\n",
+	s = sprintf("suspending dev: %s (%s)\n",
 		device_name($dev), device_driver_name($dev))
 	WriteDeviceDebug(s)
 	saved_device_name = device_name($dev)
