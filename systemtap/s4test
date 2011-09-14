@@ -162,6 +162,3 @@ print "  Device state log in s4-devices.log"
 print "  Task state log in s4-tasks.log"
 print "  Test results in s4-test.log"
 print ""
-
-print "Run 's4diagnose' to get intelligent diagnosis from the logs."
-print "(which needs to be implemented! :-)"

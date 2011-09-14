@@ -164,6 +164,3 @@ print "  Device state log in s3-devices.log"
 print "  Task state log in s3-tasks.log"
 print "  Test results in s3-test.log"
 print ""
-
-print "Run 's3diagnose' to get intelligent diagnosis from the logs."
-print "(which needs to be implemented! :-)"
