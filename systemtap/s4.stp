@@ -290,13 +290,11 @@ function beep(freq: long, delay: long) %{
  *  Dirty reboot via ICH
  */
 function ich_reboot() %{
-/*
 	outb(0x2, 0xcf9);
 	outb(0x00, 0x80);
 	outb(0x4, 0xcf9);
 	outb(0x00, 0x80);
 	outb(0xe, 0xcf9);
-*/
 %}
 
 function device_name:string (dev: long) %{
