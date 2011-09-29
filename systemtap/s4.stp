@@ -1194,7 +1194,7 @@ probe kernel.function("dpm_suspend@drivers/base/power/main.c").return {
 
 	foreach (dev in devices_suspended)
 		if (devices_suspended[dev] == 1)
-			dev_ok++;
+			dev_ok++
 		else
 			dev_fail++
 
@@ -1666,8 +1666,8 @@ probe kernel.function("freeze_task@kernel/freezer.c") {
 
 /*
 probe kernel.function("__thaw_process@kernel/freezer.c") {
-	/* s = sprintf("thaw task %d \"%s\"\n", $p->pid, kernel_string($p->comm))
-	WriteInfo(s) */
+	//s = sprintf("thaw task %d \"%s\"\n", $p->pid, kernel_string($p->comm))
+	//WriteInfo(s)
 }
 */
 
@@ -1984,7 +1984,7 @@ probe kernel.function("dpm_resume@drivers/base/power/main.c").return {
 
 	foreach (dev in devices_resumed) {
 		if (devices_resumed[dev] == 1)
-			dev_ok++;
+			dev_ok++
 		else
 			dev_fail++
 	}
