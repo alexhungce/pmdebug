@@ -813,7 +813,7 @@ probe kernel.function("panic@kernel/panic.c"),
  *
  */
 
-/* We kick off with state_store()
+/* We kick off with state_store() */
 probe kernel.function("state_store@kernel/power/main.c") {
 	trace_in("")
 
@@ -991,9 +991,7 @@ probe kernel.function("hibernation_snapshot@kernel/power/hibernate.c") {
 
 probe kernel.function("hibernation_snapshot@kernel/power/hibernate.c").return {
 	trace_out($$return)
-	/* TODO - error conditions */
 }
-
 /*
  *  ACPI hibernations_ops
  *      .begin = acpi_hibernation_begin,
@@ -1082,7 +1080,7 @@ probe kernel.function("acpi_hibernation_enter@drivers/acpi/sleep.c").return {
 
 /*
  * Misc funcs used by acpi_sleep_prepare()
- *
+ */
 probe kernel.function("acpi_set_firmware_waking_vector@drivers/acpi/acpica/hwsleep.c"),
       kernel.function("acpi_enable_wakeup_devices@drivers/acpi/wakeup.c"),
       kernel.function("acpi_enter_sleep_state_prep@drivers/acpi/acpica/hwsleep.c") {
@@ -1117,7 +1115,7 @@ probe kernel.function("hibernate_preallocate_memory@kernel/power/snapshot.c").re
 		WriteTest("hibernate_preallocate_memory(): failed to allocate pre-allocate memory for\nhibernation image. It is necessary to create a copy of every page frame in use\nhowever there was not enough free memory to do this.\n");
 }
 
-/* Won't bother instrumenting thse as they end up as inlined code
+/* Won't bother instrumenting these as they end up as inlined code
 probe kernel.function("count_highmem_pages@kernel/power/snapshot.c") {
 	trace_in("")
 }
@@ -1242,6 +1240,8 @@ probe kernel.function("swsusp_save@kernel/power/snapshot.c") {
 	WriteTest("Tasks frozen, now creating hibernation image.\n")
 }
 
+/* the following probe breaks S4 for some reason! */
+/*
 probe kernel.function("swsusp_save@kernel/power/snapshot.c").return {
 	trace_in("")
 	if (errno_str($return) == "ENOMEM")
@@ -1252,6 +1252,7 @@ probe kernel.function("swsusp_save@kernel/power/snapshot.c").return {
 	} else
 		WriteTest("swsusp_save(): hibernation image successfully created.\n")
 }
+*/
 
 probe kernel.function("drain_local_pages@mm/page_alloc.c") {
 	trace_in("")
@@ -1290,11 +1291,13 @@ probe kernel.function("copy_data_pages@kernel/power/snapshot.c") {
 	WriteTest("Able to allocate enough pages, now copying image.\n");
 }
 
+/* this probe also breaks S4 for some reason!
 probe kernel.function("copy_data_pages@kernel/power/snapshot.c").return {
 	trace_out($$return)
 	s = sprintf("Image copy completed, copied %d pages\n", pages_copied)
 	WriteInfo(s)
 }
+*/
 
 probe kernel.function("swsusp_write@kernel/power/swap.c") {
 	trace_in("")
@@ -1373,7 +1376,7 @@ probe kernel.function("blkdev_get@fs/block_dev.c").return {
 		s = sprintf("blkdev_get(): failed to open the swap device, return: %d.\n", $return)
 		WriteTest(s)
 	}
-	//else WriteTest("Can open the swap device without any problems.\n")
+	/* else WriteTest("Can open the swap device without any problems.\n") */
 }
 
 probe kernel.function("set_blocksize@fs/block_dev.c") {
@@ -1399,7 +1402,7 @@ probe kernel.funcion("swap_write_page@kernel/power/swap.c") {
 */
 
 probe kernel.function("swap_write_page@kernel/power/swap.c").return {
-	//trace_out($$return)
+	/* trace_out($$return) */
 	if (errno_str($return) == "EINVAL")
 		WriteTest("swap_write_page(): failed, handle->cur is not set.\n")
 	else if (errno_str($return) == "ENOSPC")
@@ -1492,8 +1495,6 @@ probe kernel.function("enough_swap@kernel/power/swap.c").return {
 */
 
 /* ----- REMOVE BELOW? ------- */
-
-
 
 
 probe kernel.function("suspend_valid_only_mem@kernel/power/suspend.c"),
@@ -1597,7 +1598,6 @@ probe kernel.function("*@kernel/power/suspend_test.c").return {
 	trace_out($$return)
 }
 
-
 /* ---------------------------------------------------- */
 
 /*
@@ -1666,8 +1666,8 @@ probe kernel.function("freeze_task@kernel/freezer.c") {
 
 /*
 probe kernel.function("__thaw_process@kernel/freezer.c") {
-	//s = sprintf("thaw task %d \"%s\"\n", $p->pid, kernel_string($p->comm))
-	//WriteInfo(s)
+	/* s = sprintf("thaw task %d \"%s\"\n", $p->pid, kernel_string($p->comm))
+	WriteInfo(s) */
 }
 */
 
