@@ -29,6 +29,7 @@ import signal
 import subprocess
 import errno
 import shutil
+import select
 
 reboot_func = "#"
 flash_func  = "#"
@@ -103,9 +104,14 @@ shutil.copyfile("/proc/kallsyms", "kallsyms.log")
 print "Building systemtap debugger (this may take some time).."
 print "If the machine hangs, reboot and run 'locatehang'."
 
+if os.path.exists("s4.stp"):
+        s4stp = "s4.stp"
+else:
+        s4stp = pmdebug_path + "s4.stp"
+
 signal.signal(signal.SIGUSR1, sighandler)
-cmd = [ "stap", "-g", "-DSTP_NO_OVERLOAD", "s4.stp", str(my_pid), reboot_func, flash_func, beep_func, str(minimodem), baud ]
-proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+cmd = [ "stap", "-g", "-DSTP_NO_OVERLOAD", s4stp, str(my_pid), reboot_func, flash_func, beep_func, str(minimodem), baud ]
+proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 #
 #  Filter output from systemtap script to various logs
@@ -115,35 +121,55 @@ trace_log  = open('s4-trace.log', 'w')
 test_log   = open('s4-test.log', 'w')
 device_log = open('s4-devices.log', 'w')
 task_log   = open('s4-tasks.log', 'w')
+stderr_log = open('s4-error.log', 'w')
 
-while True:
-	try:
-		line = proc.stdout.readline()
-		if not line:
-			break
-		if line.find("PM-INFO:",0) == 0:
-			print line,
-		if line.find("PM-TEST:",0) == 0:
-			print line,
-			test_log.write(line)
-		if line.find("PM-TRACE:",0) == 0:
-			#
-			#  need to plug in a function trace
-			#  back end to figure out when things
-			#  fail and provide diagnosis
-			#
-			trace_log.write(line)
-		if line.find("PM-DEV-DEBUG:",0) == 0:
-			device_log.write(line)
-		if line.find("PM-TASK-DEBUG:",0) == 0:
-			task_log.write(line)
-		full_log.write(line)
+errors = False
+stderr_open = True
+stdout_open = True
+while stderr_open or stdout_open:
+        try:
+		readable, writeable, exceptional = select.select([proc.stderr.fileno(), proc.stdout.fileno()], [], [])
+		for i in readable:
+			if i == proc.stderr.fileno():
+				line = proc.stderr.readline()
+				if line == "":
+					stderr_open = False
+				else:
+					stderr_log.write(line)
+					if line.find("error:") <> -1:
+						errors = True
+			
+			if i == proc.stdout.fileno():
+				line = proc.stdout.readline()
+				if line == "":
+					stdout_open = False
+
+				if not line:
+					break
+				if line.find("PM-INFO:",0) == 0:
+					print line,
+				if line.find("PM-TEST:",0) == 0:
+					print line,
+					test_log.write(line)
+				if line.find("PM-TRACE:",0) == 0:
+					#
+					#  need to plug in a function trace
+					#  back end to figure out when things
+					#  fail and provide diagnosis
+					#
+					trace_log.write(line)
+				if line.find("PM-DEV-DEBUG:",0) == 0:
+					device_log.write(line)
+				if line.find("PM-TASK-DEBUG:",0) == 0:
+					task_log.write(line)
+				full_log.write(line)
+	#
+	#  SIGUSR1 causes exception, don't raise
+	#
+	except select.error, x:
+		if x[0] != errno.EINTR:
+			raise
 	except IOError, x:
-		#
-		#  SIGUSR1 causes readline exception
-		#  so ignore it as a non-error and
-		#  re-read
-		#
 		if x.errno == errno.EAGAIN:
 			raise
 
@@ -154,6 +180,18 @@ trace_log.close()
 test_log.close()
 device_log.close()
 task_log.close()
+stderr_log.close()
+
+if errors:
+	print '\nError:'
+	print '  SystemTap failed to execute. This could be because the kernel debug .ddeb'
+	print '  has not been installed or the kernel functions being traced have '
+	print '  changed in this kernel version.  Check s3-error.log for more information.\n'
+	print 'If you need to install the kernel .ddeb package do the following:\n'
+	print '  echo "deb http://ddebs.ubuntu.com $(lsb_release -cs) main restricted universe multiverse | sudo tee -a /etc/apt/sources.list.d/ddebs.list'
+	print '  sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 428D7C01'
+	print '  sudo apt-get install linux-image-`uname -r`-dbgsym'
+	sys.exit(3)
 
 print "Note:"
 print "  Full trace log in s4-systemtap.log"

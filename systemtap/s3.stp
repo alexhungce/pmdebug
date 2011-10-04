@@ -1102,7 +1102,7 @@ probe kernel.function("dpm_suspend@drivers/base/power/main.c").return {
 
 	foreach (dev in devices_suspended)
 		if (devices_suspended[dev] == 1)
-			dev_ok++;
+			dev_ok++
 		else
 			dev_fail++
 
@@ -1169,7 +1169,7 @@ probe kernel.function("dpm_resume@drivers/base/power/main.c").return {
 
 	foreach (dev in devices_resumed) {
 		if (devices_resumed[dev] == 1)
-			dev_ok++;
+			dev_ok++
 		else
 			dev_fail++
 	}
