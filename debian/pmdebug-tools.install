@@ -1,0 +1,5 @@
+systemtap/s3test usr/bin
+systemtap/s4test usr/bin
+systemtap/s3.stp usr/share/pmdebug-tools
+systemtap/s4.stp usr/share/pmdebug-tools
+locatehang/locatehang usr/bin

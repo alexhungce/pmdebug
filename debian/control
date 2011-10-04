@@ -1,0 +1,14 @@
+Source: pmdebug-tools
+Section: devel
+Priority: optional
+Maintainer: Colin King <colin.king@ubuntu.com>
+Standards-Version: 3.9.1
+Build-Depends: debhelper (>= 7), systemtap, python
+
+Package: pmdebug-tools
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Power Management Debug Tools
+ These are tools to allow one to debug and diagnose suspend/resume
+ and hibernate/resume hangs.  They allow one to trace suspend and
+ hibernate kernel paths and to try and determine where a hang occurred.

@@ -1,0 +1,5 @@
+pmdebug-tools (0.03.00) oneiric; urgency=low
+
+  * Add debian build configs
+
+ -- Colin King <colin.king@canonical.com>  Tue, 4 Oct 2011 15:28:00 +0100
