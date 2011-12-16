@@ -70,6 +70,10 @@ global saved_flags
 #define LZO_CMP_PAGES		DIV_ROUND_UP(lzo1x_worst_compress(LZO_UNC_SIZE) + \
                                      LZO_HEADER, PAGE_SIZE)
 
+%}
+
+%( kernel_v < "3.2.0" %?
+%{
 /* for minimodem */
 #include <linux/kernel.h>
 #include <linux/fs.h>
@@ -82,7 +86,17 @@ global saved_flags
 # include <asm/8253pit.h>
 static DEFINE_RAW_SPINLOCK(i8253_lock);
 #endif
+%}
+%:
+%{
+#if defined(CONFIG_MIPS) || defined(CONFIG_X86)
+/* Use the global PIT lock ! */
+# include <linux/i8253.h>
+#endif
+%}
+%)
 
+%{
 /* Bell 101 (110 baud) binary AFSK frequencies */
 #define BELL101_BFSK_BAUD		110
 #define	BELL101_BFSK_MARK		1270
