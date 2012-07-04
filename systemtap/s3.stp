@@ -253,7 +253,7 @@ void save_hash_in_RTC(unsigned long hash)
 %}
 
 function set_baud(baud: long) %{
-	pcspkr_baud(THIS->baud);
+	pcspkr_baud(STAP_ARG_baud);
 %}
 
 function handle_args() {
@@ -269,13 +269,13 @@ function handle_args() {
 
 function signal_proc:long(this_pid: long)
 %{
-	pid_t this_pid = (pid_t)THIS->this_pid;
+	pid_t this_pid = (pid_t)STAP_ARG_this_pid;
 	struct pid *pid = find_vpid(this_pid);
 	if (pid) {
 		kill_pid(pid, SIGUSR1, 1);
-		THIS->__retvalue = 0;
+		STAP_RETVALUE = 0;
 	} else
-		THIS->__retvalue = -1;
+		STAP_RETVALUE = -1;
 %}
 
 /*
@@ -309,7 +309,7 @@ function led_flash() %{
  *  Beep at freq Hz.
  */
 function beep(freq: long, delay: long) %{
-	pcspkr_tone_nsec(THIS->freq, THIS->delay * 1000000);
+	pcspkr_tone_nsec(STAP_ARG_freq, STAP_ARG_delay * 1000000);
 %}
 
 /*
@@ -324,26 +324,26 @@ function ich_reboot() %{
 %}
 
 function device_name:string (dev: long) %{
-	struct device *dev = (struct device*)(long)THIS->dev;
+	struct device *dev = (struct device*)(long)STAP_ARG_dev;
 
-	strlcpy(THIS->__retvalue, dev_name(dev), MAXSTRINGLEN);
+	strlcpy(STAP_RETVALUE, dev_name(dev), MAXSTRINGLEN);
 %}
 
 function device_driver_name:string (dev: long) %{
-	struct device *dev = (struct device*)(long)THIS->dev;
+	struct device *dev = (struct device*)(long)STAP_ARG_dev;
 
-	strlcpy(THIS->__retvalue, dev_driver_string(dev), MAXSTRINGLEN);
+	strlcpy(STAP_RETVALUE, dev_driver_string(dev), MAXSTRINGLEN);
 %}
 
 function bfsk_write(msg: string) %{
-	char *str = (char*)THIS->msg;
+	char *str = (char*)STAP_ARG_msg;
 	pcspkr_generate_bfsk(str);
 %}
 
 function console_write(msg: string) %{
-	char *str = (char*)THIS->msg;
+	char *str = (char*)STAP_ARG_msg;
 
-	printk("%s", THIS->msg);
+	printk("%s", STAP_ARG_msg);
 %}
 
 function WriteTrace(msg: string) {
@@ -392,7 +392,7 @@ function rtc_save_restore(save: long) %{
 
         static struct rtc_time time;
 
-	if ((long)THIS->save)
+	if ((long)STAP_ARG_save)
 		get_rtc_time(&time);
 	else
         	set_rtc_time(&time);
@@ -400,7 +400,7 @@ function rtc_save_restore(save: long) %{
 
 function hash_symbol(symbol: string) %{
 	const char *s;
-	const char *str = (char*)THIS->symbol;
+	const char *str = (char*)STAP_ARG_symbol;
 	unsigned long g,h = 0;
 
 	/* Hash PJW, Dragon book, Aho, Sethi, Ullman */
@@ -417,8 +417,8 @@ function hash_symbol(symbol: string) %{
 %}
 
 function hash_dev_func(dev: long, suspend: long) %{
-	struct device *dev = (struct device *)(long)THIS->dev;
-	unsigned long suspend = THIS->suspend;
+	struct device *dev = (struct device *)(long)STAP_ARG_dev;
+	unsigned long suspend = STAP_ARG_suspend;
 	unsigned long addr = 0;
 
 	if (suspend) {

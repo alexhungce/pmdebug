@@ -241,7 +241,7 @@ void pcspkr_generate_bfsk(const char *str)
 %}
 
 function set_baud(baud: long) %{
-	pcspkr_baud(THIS->baud);
+	pcspkr_baud(STAP_ARG_baud);
 %}
 
 function handle_args() {
@@ -257,13 +257,13 @@ function handle_args() {
 
 function signal_proc:long(this_pid: long)
 %{
-	pid_t this_pid = (pid_t)THIS->this_pid;
+	pid_t this_pid = (pid_t)STAP_ARG_this_pid;
 	struct pid *pid = find_vpid(this_pid);
 	if (pid) {
 		kill_pid(pid, SIGUSR1, 1);
-		THIS->__retvalue = 0;
+		STAP_RETVALUE = 0;
 	} else
-		THIS->__retvalue = -1;
+		STAP_RETVALUE = -1;
 %}
 
 /*
@@ -297,7 +297,7 @@ function led_flash() %{
  *  Beep at freq Hz.
  */
 function beep(freq: long, delay: long) %{
-        pcspkr_tone_nsec(THIS->freq, THIS->delay * 1000000);
+        pcspkr_tone_nsec(STAP_ARG_freq, STAP_ARG_delay * 1000000);
 %}
 
 /*
@@ -312,26 +312,26 @@ function ich_reboot() %{
 %}
 
 function device_name:string (dev: long) %{
-	struct device *dev = (struct device*)(long)THIS->dev;
+	struct device *dev = (struct device*)(long)STAP_ARG_dev;
 
-	strlcpy(THIS->__retvalue, dev_name(dev), MAXSTRINGLEN);
+	strlcpy(STAP_RETVALUE, dev_name(dev), MAXSTRINGLEN);
 %}
 
 function device_driver_name:string (dev: long) %{
-	struct device *dev = (struct device*)(long)THIS->dev;
+	struct device *dev = (struct device*)(long)STAP_ARG_dev;
 
-	strlcpy(THIS->__retvalue, dev_driver_string(dev), MAXSTRINGLEN);
+	strlcpy(STAP_RETVALUE, dev_driver_string(dev), MAXSTRINGLEN);
 %}
 
 function bfsk_write(msg: string) %{
-	char *str = (char*)THIS->msg;
+	char *str = (char*)STAP_ARG_msg;
 	pcspkr_generate_bfsk(str);
 %}
 
 function console_write(msg: string) %{
-	char *str = (char*)THIS->msg;
+	char *str = (char*)STAP_ARG_msg;
 
-	printk("%s", THIS->msg);
+	printk("%s", STAP_ARG_msg);
 %}
 
 function WriteTrace(msg: string) {
@@ -380,7 +380,7 @@ function rtc_save_restore(save: long) %{
 
         static struct rtc_time time;
 
-	if ((long)THIS->save)
+	if ((long)STAP_ARG_save)
 		get_rtc_time(&time);
 	else
         	set_rtc_time(&time);
@@ -388,7 +388,7 @@ function rtc_save_restore(save: long) %{
 
 function hash_symbol:long(symbol: string) %{
 	const char *s;
-	const char *str = (char*)THIS->symbol;
+	const char *str = (char*)STAP_ARG_symbol;
 	unsigned long g,h = 0;
 
 	for (s = str; *s; s++) {
@@ -402,12 +402,12 @@ function hash_symbol:long(symbol: string) %{
 
 	h %= RTC_HASH_MAX;
 
-	THIS->__retvalue = h;
+	STAP_RETVALUE = h;
 %}
 
 function hash_dev_func:long(dev: long, suspend: long) %{
-	struct device *dev = (struct device *)(long)THIS->dev;
-	unsigned long suspend = THIS->suspend;
+	struct device *dev = (struct device *)(long)STAP_ARG_dev;
+	unsigned long suspend = STAP_ARG_suspend;
 	unsigned long addr = 0;
 
 	if (suspend) {
@@ -450,11 +450,11 @@ function hash_dev_func:long(dev: long, suspend: long) %{
 
 	addr %= RTC_HASH_MAX;
 
-	THIS->__retvalue = addr;
+	STAP_RETVALUE = addr;
 %}
 
 function store_hash_long(h: long) %{
-	unsigned long h = (unsigned long)THIS->h;
+	unsigned long h = (unsigned long)STAP_ARG_h;
 
         static struct rtc_time time = {
                 .tm_sec = 0,
@@ -486,30 +486,30 @@ function store_hash_long(h: long) %{
 
 /*
 function pm_noirq_op_func:long(op: long, state: long) %{
-	const struct dev_pm_ops * = (const struct dev_pm_ops *)THIS->op;
-	pm_message_t state = (pm_message_t)THIS->state;
+	const struct dev_pm_ops * = (const struct dev_pm_ops *)STAP_ARG_op;
+	pm_message_t state = (pm_message_t)STAP_ARG_state;
 
 	if (op == NULL) {
-		THIS->__retvalue = 0;
+		STAP_RETVALUE = 0;
 		return
 	} else {
 		switch (state.event) {
 		case PM_EVENT_FREEZE:
 		case PM_EVENT_QUIESCE:
-			THIS->__retvalue = (unsigned long)ops->freeze_noirq;
+			STAP_RETVALUE = (unsigned long)ops->freeze_noirq;
 			break;
 		case PM_EVENT_HIBERNATE:
-			THIS->__retvalue = (unsigned long)ops->poweroff_noirq;
+			STAP_RETVALUE = (unsigned long)ops->poweroff_noirq;
 			break;
 		case PM_EVENT_THAW:
 		case PM_EVENT_RECOVER:
-			THIS->__retvalue = (unsigned long)ops->thaw_noirq;
+			STAP_RETVALUE = (unsigned long)ops->thaw_noirq;
 			break;
 		case PM_EVENT_RESTORE:
-			THIS->__retvalue = (unsigned long)ops->restore_noirq;
+			STAP_RETVALUE = (unsigned long)ops->restore_noirq;
 			break;
 		default:
-			THIS->__retvalue = 0;
+			STAP_RETVALUE = 0;
 		}
 	}
 %}
@@ -517,9 +517,9 @@ function pm_noirq_op_func:long(op: long, state: long) %{
 
 /*
 function pm_noirq_op_ops:long(dev: long) %{
-	struct device *dev = (struct device *)THIS->dev;
+	struct device *dev = (struct device *)STAP_ARG_dev;
 	const struct dev_pm_ops *ops;
-	unsigned long suspend = THIS->suspend;
+	unsigned long suspend = STAP_ARG_suspend;
 	unsigned long addr = 0;
 
 	if (dev->pwr_domain)
@@ -533,7 +533,7 @@ function pm_noirq_op_ops:long(dev: long) %{
 	else
 		ops = NULL;
 
-	THIS->__retvalue = (unsigned long)ops;
+	STAP_RETVALUE = (unsigned long)ops;
 %}
 */
 
@@ -1459,14 +1459,14 @@ probe kernel.function("save_image_lzo@kernel/power/swap.c").return {
 }
 
 function do_required_swap_pages:long(nr_pages:long, flags:long) %{
-	unsigned int nr_pages = (unsigned int)THIS->nr_pages;
-	unsigned int flags = (unsigned int)THIS->flags;
+	unsigned int nr_pages = (unsigned int)STAP_ARG_nr_pages;
+	unsigned int flags = (unsigned int)STAP_ARG_flags;
 	unsigned int required;
 
 	required = PAGES_FOR_IO + ((flags & SF_NOCOMPRESS_MODE) ?
                 nr_pages : (nr_pages * LZO_CMP_PAGES) / LZO_UNC_PAGES + 1);
 
-	THIS->__retvalue = required;
+	STAP_RETVALUE = required;
 %}
 
 probe kernel.function("count_swap_pages@mm/swapfile.c") {
