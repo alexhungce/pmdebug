@@ -73,6 +73,7 @@ function decode_op:string(opcode: long) %{
 	OP(  0x12, "PACKAGE_OP")
 	OP(  0x13, "VAR_PACKAGE_OP")
 	OP(  0x14, "METHOD_OP")
+	OP(  0x15, "EXTERNAL_OP")
 	OP(  0x2e, "DUAL_NAME_PREFIX")
 	OP(  0x2f, "MULTI_NAME_PREFIX_OP")
 	OP(  0x30, "NAME_CHAR_SUBSEQ")
@@ -80,6 +81,7 @@ function decode_op:string(opcode: long) %{
 	OP(  0x5b, "EXTENDED_OP_PREFIX")
 	OP(  0x5c, "ROOT_PREFIX")
 	OP(  0x5e, "PARENT_PREFIX")
+	/* OP(  0x60, "AML_LOCAL_OP") */
 	OP(  0x60, "LOCAL0")
 	OP(  0x61, "LOCAL1")
 	OP(  0x62, "LOCAL2")
@@ -88,6 +90,7 @@ function decode_op:string(opcode: long) %{
 	OP(  0x65, "LOCAL5")
 	OP(  0x66, "LOCAL6")
 	OP(  0x67, "LOCAL7")
+	/* OP(  0x68, "AML_ARG_OP") */
 	OP(  0x68, "ARG0")
 	OP(  0x69, "ARG1")
 	OP(  0x6a, "ARG2")
@@ -192,10 +195,11 @@ function decode_op:string(opcode: long) %{
 	OP(0x0031, "INT_RESERVEDFIELD_OP")
 	OP(0x0032, "INT_ACCESSFIELD_OP")
 	OP(0x0033, "INT_BYTELIST_OP")
-	OP(0x0034, "INT_STATICSTRING_OP")
 	OP(0x0035, "INT_METHODCALL_OP")
 	OP(0x0036, "INT_RETURN_VALUE_OP")
 	OP(0x0037, "INT_EVAL_SUBTREE_OP")
+	OP(0x0038, "INT_CONNECTION_OP")
+	OP(0x0039, "INT_EXTACCESSFIELD_OP")
 	default:
 		strcpy(STAP_RETVALUE, "UNKNOWN");
 		break;
