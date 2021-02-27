@@ -60,7 +60,6 @@ function decode_op:string(opcode: long) %{
 	switch (STAP_ARG_opcode) {
 	OP(  0x00, "ZERO_OP")
 	OP(  0x01, "ONE_OP")
-	OP(  0x02, "UNASSIGNED")
 	OP(  0x06, "ALIAS_OP")
 	OP(  0x08, "NAME_OP")
 	OP(  0x0a, "BYTE_OP")
@@ -76,8 +75,6 @@ function decode_op:string(opcode: long) %{
 	OP(  0x15, "EXTERNAL_OP")
 	OP(  0x2e, "DUAL_NAME_PREFIX")
 	OP(  0x2f, "MULTI_NAME_PREFIX_OP")
-	OP(  0x30, "NAME_CHAR_SUBSEQ")
-	OP(  0x41, "NAME_CHAR_FIRST")
 	OP(  0x5b, "EXTENDED_OP_PREFIX")
 	OP(  0x5c, "ROOT_PREFIX")
 	OP(  0x5e, "PARENT_PREFIX")
@@ -150,6 +147,7 @@ function decode_op:string(opcode: long) %{
 	OP(  0xa3, "NOOP_OP")
 	OP(  0xa4, "RETURN_OP")
 	OP(  0xa5, "BREAK_OP")
+	OP(  0xa9, "COMMENT_OP")
 	OP(  0xcc, "BREAK_POINT_OP")
 	OP(  0xff, "ONES_OP")
 	OP(0x5b00, "EXTENDED_OPCODE")
@@ -191,7 +189,7 @@ function decode_op:string(opcode: long) %{
  	 * Internal opcodes
  	 */
 	OP(  0x2d, "INT_NAMEPATH_OP")
-	//OP(0x0030, "INT_NAMEDFIELD_OP")
+	OP(0x0030, "INT_NAMEDFIELD_OP")
 	OP(0x0031, "INT_RESERVEDFIELD_OP")
 	OP(0x0032, "INT_ACCESSFIELD_OP")
 	OP(0x0033, "INT_BYTELIST_OP")
